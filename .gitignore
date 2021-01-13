@@ -32,7 +32,5 @@
 *.app
 
 # User
-.vscode/
-judge/
-nvm_engine/segvCatch.h
+
 
