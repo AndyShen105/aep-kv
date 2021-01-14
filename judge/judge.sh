@@ -20,5 +20,6 @@ if [ $? -ne 0 ]; then
 fi
 
 rm -f /home/andyshen/code/tair2/tair-contest/judge/DB
-./judge -s $set_per_thread -g $get_per_thread
+#sshpass -p123456 ssh root@172.26.0.111 "rm -rf /mnt/pmem1/kv_db"
+#./judge -s $set_per_thread -g $get_per_thread
 

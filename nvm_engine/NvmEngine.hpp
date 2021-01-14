@@ -1,9 +1,5 @@
 #pragma once
-
-#ifdef USE_LIBPMEM
 #include <libpmem.h>
-#endif
-
 #include <libpmem.h>
 #include <atomic>
 #include <cmath>
@@ -12,7 +8,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
 #include "../include/db.hpp"
 
 using std::atomic;
@@ -54,22 +49,12 @@ thread_local int find_times = 0;
 thread_local int wt = 0;
 thread_local int rt = 0;
 
-HASH_VALUE DJBHash(const char* _str) {
+HASH_VALUE DJBHash(const char* _str, size_t size = 16) {
   unsigned int hash = 5381;
-  for (unsigned int i = 0; i < 16; ++_str, ++i) {
+  for (unsigned int i = 0; i < size; ++_str, ++i) {
     hash = ((hash << 5) + hash) + (*_str);
   }
   return hash;
-}
-
-uint32_t default_hash(const char* str) {
-  size_t len = 16;
-  uint32_t hash = 0;
-  uint32_t DEFAULT_HASH_SEED = 5381;
-  while (len--) {
-    hash = hash * DEFAULT_HASH_SEED + (*str++);
-  }
-  return (hash & 0x7FFFFFFFU);
 }
 
 class Entry {
@@ -238,6 +223,7 @@ class KeyPool {
     }
     return UINT32_MAX;
   }
+
   VALUE_LEN_TYPE getValLen(KEY_INDEX_TYPE _index) {
     return *(VALUE_LEN_TYPE*)(keyBuffer +
                               static_cast<uint64_t>(_index) * KEY_STORE_LEN +
@@ -322,6 +308,7 @@ class KVStore {
     // store and flush value
     BLOCK_INDEX_TYPE bi = getBlockIndex(_value);
 
+
     pmem_memcpy_persist(this->valueBase + (uint64_t)bi * VALUE_BLOCK_LEN,
                         _value.data(), dataLen);
 
@@ -362,12 +349,12 @@ class KVStore {
   char* valueBase = nullptr;
 };
 
-typedef uint32_t (*hash_func)(const char*);
+typedef uint32_t (*hash_func)(const char*, size_t size);
 
 class NvmEngine;
 class HashMap {
  public:
-  HashMap(char* _base, hash_func _hash = DJBHash);
+  explicit HashMap(char* _base, hash_func _hash = DJBHash);
 
   ~HashMap();
 
@@ -383,7 +370,7 @@ class HashMap {
 
  private:
   uint32_t hashValue(const Slice& _key) const {
-    return this->hash(_key.data());
+    return this->hash(_key.data(), KEY_LEN);
   }
   Entry& entry(const uint32_t _hash) { return entries[_hash % HASH_MAP_SIZE]; }
 

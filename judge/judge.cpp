@@ -30,6 +30,7 @@ const int MAX_POOL_SIZE = 1e7;
 int POOL_TOP = 0;
 ull key_pool[MAX_POOL_SIZE];
 int MODE = 1;
+std::string TAGERT_FILE;
 
 std::mutex mt2;
 std::unordered_map<std::string, std::string> real_result;
@@ -136,7 +137,7 @@ void config_parse(int argc, char* argv[]) {
       case 'h':
         printf(
             "Usage: ./judge -s <set-size-per-Thread> -g "
-            "<get-size-per-Thread>\n");
+            "<get-size-per-Thread> -f <aep-file-path>\n");
         return;
       case 'm':
         MODE = atoi(optarg);
@@ -146,6 +147,8 @@ void config_parse(int argc, char* argv[]) {
         break;
       case 'g':
         PER_GET = atoi(optarg);
+      case 'f':
+        TAGERT_FILE = optarg;
         break;
     }
   }
@@ -224,7 +227,7 @@ int main(int argc, char* argv[]) {
   FILE* log_file = fopen(
       "/home/dbdm/tair-contest/judge/performance.log", "w");
 
-  DB::CreateOrOpen("/home/dbdm/tair-contest/judge/DB", &db,
+  DB::CreateOrOpen("DB", &db,
                    log_file);
   setenv("MALLOC_TRACE", "output", 1);
   mtrace();
