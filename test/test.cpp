@@ -49,7 +49,7 @@ void test1() {
     free(v.data());
   }
 
-  char *t = "X112S0q592Qa56uC";
+  char *t = "nbvXG0G8Y67Ie949";
   Slice slice(t, 16);
 
   std::string a;
@@ -164,4 +164,4 @@ void test4() {
   db->Get(slice_key, &b);
   std::cout << b << std::endl;
 }
-int main() { test3(); }
+int main() { test1(); }

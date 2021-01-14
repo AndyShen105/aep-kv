@@ -11,14 +11,65 @@ Status DB::CreateOrOpen(const std::string& name, DB** dbptr, FILE* log_file) {
 
 DB::~DB() = default;
 
-// TODO: Update Get block index
 BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
-  VALUE_LEN_TYPE dataLen = _value.size();
-  int blockNum = (RECORD_FIX_LEN + dataLen + BLOCK_LEN - 1) / BLOCK_LEN;
-  BLOCK_INDEX_TYPE bi = UINT32_MAX;
-  // TODO: add Get bi from freelist and temp Set bi = 0
-  bi = 0;
-  return bi;
+  VALUE_LEN_TYPE data_len = _value.size();
+  int block_num = (RECORD_FIX_LEN + data_len + BLOCK_LEN - 1) / BLOCK_LEN;
+  BLOCK_INDEX_TYPE block_index = UINT32_MAX;
+  aep_memory_controller_->Pop(block_num, &block_index);
+  return block_index;
+}
+
+void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
+  VALUE_LEN_TYPE data_len = _value.size();
+  // store and flush value
+  BLOCK_INDEX_TYPE bi = GetBlockIndex(_value);
+  size_t record_len = RECORD_FIX_LEN + _value.size();
+  char* record_buffer = new char[record_len];
+  VALUE_LEN_TYPE len = _value.size();
+  VERSION_TYPE version = 0;
+  memcpy(record_buffer + KEY_OFFSET, _key.data(), KEY_LEN);
+  memcpy(record_buffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
+  memcpy(record_buffer + VERSION_OFFSET, &version, VERSION_LEN);
+  memcpy(record_buffer + VALUE_OFFSET, _value.data(), _value.size());
+  HASH_VALUE check_sum = DJBHash(record_buffer, record_len - CHECK_SUM_LEN);
+  memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
+  // memcpy to pmem and flush
+  pmem_memcpy_persist(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, record_buffer,
+                      record_len);
+  delete[] record_buffer;
+  // Update key buffer in memory
+  KEY_INDEX_TYPE index;
+  index = current_key_index_.fetch_add(1);
+  auto oldHead = _entry->SetHead(index);
+  next_[index] = oldHead;
+  block_index_[index] = bi;
+  val_lens_[index] = _value.size();
+  memcpy(key_buffer_ + index * KEY_LEN, _key.data(), KEY_LEN);
+}
+
+void KVStore::Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _index) {
+  VALUE_LEN_TYPE data_len = val_lens_[_index];
+  BLOCK_INDEX_TYPE old_block_index = block_index_[_index];
+
+  BLOCK_INDEX_TYPE new_block_index = GetBlockIndex(_value);
+  size_t record_len = RECORD_FIX_LEN + _value.size();
+  char* record_buffer = new char[record_len];
+  VALUE_LEN_TYPE len = _value.size();
+
+  memcpy(record_buffer + KEY_OFFSET, _key.data(), KEY_LEN);
+  memcpy(record_buffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
+  memcpy(record_buffer + VERSION_OFFSET, &versions_[_index], VERSION_LEN);
+  memcpy(record_buffer + VALUE_OFFSET, _value.data(), _value.size());
+  HASH_VALUE check_sum = DJBHash(record_buffer, record_len - CHECK_SUM_LEN);
+  memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
+  // memcpy to pmem and flush
+  pmem_memcpy_persist(this->aep_base_ + (uint64_t)new_block_index * BLOCK_LEN,
+                      record_buffer, record_len);
+  delete[] record_buffer;
+  block_index_[_index] = new_block_index;
+  versions_[_index] = versions_[_index] + 1;
+  val_lens_[_index] = _value.size();
+  Recycle(data_len, old_block_index);
 }
 
 HashMap::HashMap(char* _base, pFunction _hash) : hash_(_hash) {
@@ -28,7 +79,7 @@ HashMap::HashMap(char* _base, pFunction _hash) : hash_(_hash) {
     entry_allocator.construct(this->entries_ + i);
   }
   kv_store_ = new KVStore(_base);
-  Recovery(_base);
+  //Recovery(_base);
 }
 
 HashMap::~HashMap() {
@@ -38,21 +89,21 @@ HashMap::~HashMap() {
 }
 
 Status HashMap::Get(const Slice& _key, std::string* _value) {
-  uint32_t hashVal = DJBHash(_key.data());
-  Entry& entry = this->entry(hashVal);
+  uint32_t hash_val = DJBHash(_key.data());
+  Entry& entry = this->entry(hash_val);
   KEY_INDEX_TYPE head = entry.GetHead();
   if (head == UINT32_MAX) return NotFound;
   head = kv_store_->Find(_key, head);
   if (head != UINT32_MAX) {
-    kv_store_->read(head, _value);
+    kv_store_->Read(head, _value);
     return Ok;
   }
   return NotFound;
 }
 
 Status HashMap::Set(const Slice& _key, const Slice& _value) {
-  uint32_t hashVal = DJBHash(_key.data());
-  Entry& entry = this->entry(hashVal);
+  uint32_t hash_val = DJBHash(_key.data());
+  Entry& entry = this->entry(hash_val);
   KEY_INDEX_TYPE head = entry.GetHead();
   if (head != UINT32_MAX) {
     head = kv_store_->Find(_key, entry.GetHead());
@@ -67,7 +118,43 @@ Status HashMap::Set(const Slice& _key, const Slice& _value) {
   return Ok;
 }
 
-Status HashMap::Recovery(char* _base) { return Ok; }
+Status HashMap::Recovery(char* _base) {
+  size_t offset = 0;
+  char* record_base = nullptr;
+  VALUE_LEN_TYPE len = UINT16_MAX;
+  HASH_VALUE check_sum = UINT32_MAX;
+  uint32_t time_stamp = UINT32_MAX;
+  uint16_t record_len = 0;
+
+  while (offset < FILE_SIZE / BLOCK_LEN) {
+    // check max offset
+    record_base = _base + (uint64_t)offset * BLOCK_LEN;
+    len = *(VALUE_LEN_TYPE*)(record_base);
+    record_len = len + RECORD_FIX_LEN;
+    HASH_VALUE check_sum_new = DJBHash(record_base, record_len);
+    check_sum = *(HASH_VALUE*)(record_base + (record_len - CHECK_SUM_LEN));
+    if (check_sum_new == check_sum) {
+      uint32_t hash_val = DJBHash(record_base + VAL_SIZE_LEN);
+      Entry& entry = this->entry(hash_val);
+      KEY_INDEX_TYPE head = entry.GetHead();
+      if (head != UINT32_MAX) {
+        head = kv_store_->Find(record_base + VAL_SIZE_LEN, entry.GetHead());
+      }
+      if (head == UINT32_MAX) {
+        this->kv_store_->Recovery(offset, len, record_base, &entry);
+      } else {
+        this->kv_store_->UpdateKeyInfo(
+            head, offset, len, *(VERSION_TYPE*)(record_base + VERSION_OFFSET));
+      }
+      int blockNum = (record_len + BLOCK_LEN - 1) / BLOCK_LEN;
+      offset += blockNum;
+    } else {
+      // recycle
+      offset++;
+    }
+  }
+  return Ok;
+}
 
 void HashMap::Summary() {
   struct rusage usage {};

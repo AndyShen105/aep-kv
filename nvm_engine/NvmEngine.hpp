@@ -17,24 +17,26 @@ typedef uint32_t HASH_VALUE;
 typedef uint16_t VALUE_LEN_TYPE;
 typedef uint32_t KEY_INDEX_TYPE;
 typedef uint32_t BLOCK_INDEX_TYPE;
+typedef uint16_t VERSION_TYPE;
 
 // size of record
 static const uint8_t KEY_LEN = 16;
 static const uint8_t VAL_SIZE_LEN = 2;
 static const uint8_t CHECK_SUM_LEN = 4;
-static const uint8_t TIME_STAMP_LEN = 4;
-static const uint8_t RECORD_FIX_LEN = 26;
+static const uint8_t VERSION_LEN = 2;
+static const uint8_t RECORD_FIX_LEN = 24;
 static const uint16_t VALUE_MAX_LEN = 1024;
 
 // offset of record
-static const uint8_t KEY_OFFSET = 0;
-static const uint8_t VAL_SIZE_OFFSET = KEY_LEN;
-static const uint8_t TIME_STAMP_OFFSET = VAL_SIZE_OFFSET + VAL_SIZE_LEN;
-static const uint8_t VALUE_OFFSET = TIME_STAMP_OFFSET + TIME_STAMP_LEN;
+static const uint8_t VAL_SIZE_OFFSET = 0;
+static const uint8_t KEY_OFFSET = VAL_SIZE_LEN;
+static const uint8_t VERSION_OFFSET = KEY_OFFSET + KEY_LEN;
+static const uint8_t VALUE_OFFSET = VERSION_OFFSET + VERSION_LEN;
 
 // aep setting
-static const uint8_t BLOCK_LEN = 32;
-static const uint64_t FILE_SIZE = 68719476736UL;
+static const uint8_t BLOCK_LEN = 64;
+// static const uint64_t FILE_SIZE = 68719476736UL;
+static const uint64_t FILE_SIZE = 10000000UL;
 
 // hash setting
 static const uint32_t KV_NUM_MAX = 16 * 24 * 1024 * 1024 * 0.60;
@@ -70,17 +72,20 @@ class Entry {
 
 class AepMemoryController {
  public:
-  AepMemoryController(int _maxSize, int _blockSize){};
+  AepMemoryController(int _max_size) {
+    max_block_index_ = ceil((double)_max_size / BLOCK_LEN) + 1;
+  };
 
-  void SetLocalFree(BLOCK_INDEX_TYPE _base) {}
-
-  // recover free list from pmem
-  void Recovery(char* _memBase){};
-  // push one free block
   void Push(int _size, BLOCK_INDEX_TYPE _index){};
 
-  // try to pop one appropriate free block
-  bool Pop(int _size, BLOCK_INDEX_TYPE* _index) { return true; };
+  bool Pop(int _size, BLOCK_INDEX_TYPE* _index) {
+    *_index = current_block_index_.fetch_add(_size);
+    return *_index < max_block_index_;
+  };
+
+ private:
+  BLOCK_INDEX_TYPE max_block_index_;
+  std::atomic<KEY_INDEX_TYPE> current_block_index_ = {0};
 };
 
 class KVStore {
@@ -90,6 +95,8 @@ class KVStore {
     this->next_ = new KEY_INDEX_TYPE[KV_NUM_MAX];
     this->block_index_ = new BLOCK_INDEX_TYPE[KV_NUM_MAX];
     this->val_lens_ = new VALUE_LEN_TYPE[KV_NUM_MAX];
+    this->versions_ = new VERSION_TYPE[KV_NUM_MAX]{0};
+    this->aep_memory_controller_ = new AepMemoryController(FILE_SIZE);
     // TODO: ADD FREE LSIT
   };
   ~KVStore() {
@@ -97,66 +104,22 @@ class KVStore {
     delete this->next_;
     delete this->key_buffer_;
     delete this->block_index_;
+    delete this->versions_;
+    delete this->aep_memory_controller_;
   }
 
-  // read key and value according to the index of key
-  void read(KEY_INDEX_TYPE _index, string* _value) {
-    BLOCK_INDEX_TYPE index = block_index_[_index];
-    _value->assign(this->aep_base_ + (uint64_t)index * BLOCK_LEN + VALUE_OFFSET,
-                   val_lens_[index]);
+  // Read key and value according to the index of key
+  void Read(KEY_INDEX_TYPE _index, string* _value) {
+    BLOCK_INDEX_TYPE block_index = block_index_[_index];
+    _value->assign(
+        this->aep_base_ + (uint64_t)block_index * BLOCK_LEN + VALUE_OFFSET,
+        val_lens_[_index]);
   };
-
-  BLOCK_INDEX_TYPE GetBlockIndex(const Slice& _value);
 
   // Write kv pair to pmem
-  void Write(const Slice& _key, const Slice& _value, Entry* _entry) {
-    VALUE_LEN_TYPE dataLen = _value.size();
-    // store and flush value
-    BLOCK_INDEX_TYPE bi = GetBlockIndex(_value);
-    size_t recordLen = RECORD_FIX_LEN + _value.size();
-    char* recordBuffer = new char[recordLen];
-    VALUE_LEN_TYPE len = _value.size();
-    memcpy(recordBuffer, _key.data(), KEY_LEN);
-    memcpy(recordBuffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
-    memcpy(recordBuffer + TIME_STAMP_OFFSET, "1234", TIME_STAMP_LEN);
-    memcpy(recordBuffer + VALUE_OFFSET, _value.data(), _value.size());
-    HASH_VALUE checkSum = DJBHash(recordBuffer, recordLen - CHECK_SUM_LEN);
-    memcpy(recordBuffer + recordLen - CHECK_SUM_LEN, &checkSum, CHECK_SUM_LEN);
-    // memcpy to pmem and flush
-    pmem_memcpy_persist(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, _value.data(),
-                        dataLen);
-    delete[] recordBuffer;
-    // Update key buffer in memory
-    KEY_INDEX_TYPE index;
-    index = current_key_index_.fetch_add(1);
-    auto oldHead = _entry->SetHead(index);
-    next_[index] = oldHead;
-    block_index_[index] = bi;
-    memcpy(key_buffer_ + index * KEY_LEN, _key.data(), KEY_LEN);
-    _entry->SetHead(index);
-  };
+  void Write(const Slice& _key, const Slice& _value, Entry* _entry);
 
-  void Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _index) {
-    VALUE_LEN_TYPE dataLen = val_lens_[_index];
-    BLOCK_INDEX_TYPE oldBlockIndex = block_index_[_index];
-
-    BLOCK_INDEX_TYPE newBlockIndex = GetBlockIndex(_value);
-    size_t recordLen = RECORD_FIX_LEN + _value.size();
-    char* recordBuffer = new char[recordLen];
-    VALUE_LEN_TYPE len = _value.size();
-    memcpy(recordBuffer, _key.data(), KEY_LEN);
-    memcpy(recordBuffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
-    memcpy(recordBuffer + TIME_STAMP_OFFSET, "1234", TIME_STAMP_LEN);
-    memcpy(recordBuffer + VALUE_OFFSET, _value.data(), _value.size());
-    HASH_VALUE checkSum = DJBHash(recordBuffer, recordLen - CHECK_SUM_LEN);
-    memcpy(recordBuffer + recordLen - CHECK_SUM_LEN, &checkSum, CHECK_SUM_LEN);
-    // memcpy to pmem and flush
-    pmem_memcpy_persist(this->aep_base_ + (uint64_t)newBlockIndex * BLOCK_LEN,
-                        _value.data(), dataLen);
-    delete[] recordBuffer;
-    block_index_[_index] = newBlockIndex;
-    Recycle(dataLen, oldBlockIndex);
-  }
+  void Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _index);
 
   // Recycle value according to its head index
   void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
@@ -178,15 +141,38 @@ class KVStore {
     return UINT32_MAX;
   }
 
+  BLOCK_INDEX_TYPE GetBlockIndex(const Slice& _value);
+
+  void Recovery(BLOCK_INDEX_TYPE _block_index, VALUE_LEN_TYPE _value_len,
+                char* _record, Entry* _entry) {
+    KEY_INDEX_TYPE index;
+    index = current_key_index_.fetch_add(1);
+    auto oldHead = _entry->SetHead(index);
+    next_[index] = oldHead;
+    block_index_[index] = _block_index;
+    val_lens_[index] = _value_len;
+    versions_[index] = *(VERSION_TYPE*)(_record + VERSION_OFFSET);
+    memcpy(key_buffer_ + index * KEY_LEN, _record + VAL_SIZE_LEN, KEY_LEN);
+  }
+
+  void UpdateKeyInfo(KEY_INDEX_TYPE _index, BLOCK_INDEX_TYPE _block_index,
+                     VALUE_LEN_TYPE _value_len, VERSION_TYPE _version) {
+    if (_version > versions_[_index]) {
+      block_index_[_index] = _block_index;
+      val_lens_[_index] = _value_len;
+      versions_[_index] = _version;
+    }
+  }
+
  public:
   AepMemoryController* aep_memory_controller_;
 
  private:
-  atomic<BLOCK_INDEX_TYPE> cur_value_index_ = {0};
   std::atomic<KEY_INDEX_TYPE> current_key_index_ = {0};
   KEY_INDEX_TYPE* next_ = nullptr;
   BLOCK_INDEX_TYPE* block_index_ = nullptr;
   VALUE_LEN_TYPE* val_lens_ = nullptr;
+  VERSION_TYPE* versions_;
   char* key_buffer_ = nullptr;
   char* aep_base_ = nullptr;
 };
