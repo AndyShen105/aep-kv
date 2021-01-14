@@ -3,7 +3,7 @@
 运行命令：
 
 ```
-./judge.sh <lib-path> <scale of set> <scale of get>
+./judge.sh <lib-path> <scale of Set> <scale of Get>
 ```
 
 

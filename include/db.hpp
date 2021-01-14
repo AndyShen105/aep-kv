@@ -61,9 +61,9 @@ class DB {
 public:
     /*
      *  Create or recover db from pmem-file.
-     *  It's not required to implement the recovery in round 1.
+     *  It's not required to implement the Recovery in round 1.
      *  You can assume that the file does not exist.
-     *  You should write your log to the log_file. 
+     *  You should Write your log to the log_file.
      *  Stdout, stderr would be redirect to /dev/null.
      */
     static Status CreateOrOpen(const std::string& name, DB** dbptr, FILE* log_file = nullptr);

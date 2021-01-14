@@ -1,6 +1,5 @@
 #pragma once
 #include <libpmem.h>
-#include <libpmem.h>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -18,40 +17,35 @@ typedef uint32_t HASH_VALUE;
 typedef uint16_t VALUE_LEN_TYPE;
 typedef uint32_t KEY_INDEX_TYPE;
 typedef uint32_t BLOCK_INDEX_TYPE;
-typedef long long LL;
 
+// size of record
 static const uint8_t KEY_LEN = 16;
-static const uint8_t KEY_STORE_VALUE_LINK_OFFSET =
-    KEY_LEN + sizeof(VALUE_LEN_TYPE);
-static const uint8_t KEY_STORE_LEN =
-    KEY_STORE_VALUE_LINK_OFFSET + sizeof(BLOCK_INDEX_TYPE) + 2;
-static const uint32_t KV_NUM_MAX = 16 * 24 * 1024 * 1024 * 0.60;
-static const uint32_t HASH_MAP_SIZE = 100000000;
-static const uint64_t FILE_SIZE = 68719476736UL;
-static const uint8_t VALUE_BLOCK_LEN = 32;
+static const uint8_t VAL_SIZE_LEN = 2;
+static const uint8_t CHECK_SUM_LEN = 4;
+static const uint8_t TIME_STAMP_LEN = 4;
+static const uint8_t RECORD_FIX_LEN = 26;
 static const uint16_t VALUE_MAX_LEN = 1024;
 
-static const int32_t THREAD_NUM = 17;
-static const uint64_t VALUE_PART_SIZE =
-    FILE_SIZE - (uint64_t)KV_NUM_MAX * KEY_STORE_LEN;
-static const uint32_t VALUE_PART_FIX_NUM =
-    VALUE_PART_SIZE * 0.80 / THREAD_NUM / VALUE_BLOCK_LEN;
+// offset of record
+static const uint8_t KEY_OFFSET = 0;
+static const uint8_t VAL_SIZE_OFFSET = KEY_LEN;
+static const uint8_t TIME_STAMP_OFFSET = VAL_SIZE_OFFSET + VAL_SIZE_LEN;
+static const uint8_t VALUE_OFFSET = TIME_STAMP_OFFSET + TIME_STAMP_LEN;
 
-thread_local int tid = -1;
-atomic<int32_t> curTid = {0};
-thread_local char valueBuff[VALUE_MAX_LEN];
-thread_local char keyBuff[KEY_STORE_LEN];
+// aep setting
+static const uint8_t BLOCK_LEN = 32;
+static const uint64_t FILE_SIZE = 68719476736UL;
 
-static const uint32_t KEY_PART_FIX_NUM = KV_NUM_MAX * 0.90 / THREAD_NUM;
+// hash setting
+static const uint32_t KV_NUM_MAX = 16 * 24 * 1024 * 1024 * 0.60;
+static const uint32_t HASH_MAP_SIZE = 100000000;
 
 // log
-thread_local int find_times = 0;
 thread_local int wt = 0;
-thread_local int rt = 0;
 
-HASH_VALUE DJBHash(const char* _str, size_t size = 16) {
+HASH_VALUE DJBHash(const char* _str, size_t _size = 16) {
   unsigned int hash = 5381;
-  for (unsigned int i = 0; i < size; ++_str, ++i) {
+  for (unsigned int i = 0; i < _size; ++_str, ++i) {
     hash = ((hash << 5) + hash) + (*_str);
   }
   return hash;
@@ -59,294 +53,142 @@ HASH_VALUE DJBHash(const char* _str, size_t size = 16) {
 
 class Entry {
  public:
-  Entry() : head(UINT32_MAX){};
+  Entry() : head_(UINT32_MAX){};
   ~Entry() = default;
 
-  KEY_INDEX_TYPE getHead() const {
-    return this->head.load(std::memory_order_relaxed);
+  KEY_INDEX_TYPE GetHead() const {
+    return this->head_.load(std::memory_order_relaxed);
   }
-  // set head and return the old one
-  KEY_INDEX_TYPE setHead(const uint32_t sn) {
-    return this->head.exchange(sn, std::memory_order_relaxed);
+  // Set head and return the old one
+  KEY_INDEX_TYPE SetHead(const uint32_t _sn) {
+    return this->head_.exchange(_sn, std::memory_order_relaxed);
   }
 
  public:
-  std::atomic<KEY_INDEX_TYPE> head;
+  std::atomic<KEY_INDEX_TYPE> head_;
 };
 
-static const int lf_span = 43;
-
-typedef uint32_t LocalFree[lf_span * THREAD_NUM];
-typedef vector<vector<BLOCK_INDEX_TYPE>> LocalQueue;
-
-typedef uint32_t LocalKey[lf_span * THREAD_NUM];
-
-class FreeList {
+class AepMemoryController {
  public:
-  FreeList(int _maxSize, int _blockSize) {
-    if (_blockSize < 32) {
-      _blockSize = 32;
-    }
-    if (_blockSize > 128) {
-      _blockSize = 128;
-    }
-    // exists redundant entries, listHead[0] stores large free space when
-    // recovery
-    int listNum = ceil((double)_maxSize / _blockSize) + 1;
-    for (auto& lq : localQueues) {
-      lq.resize(listNum);
-    }
-  };
+  AepMemoryController(int _maxSize, int _blockSize){};
 
-  void setLocalFree(BLOCK_INDEX_TYPE _base) {
-    for (int i = 0; i < THREAD_NUM; ++i) {
-      this->localFrees[i * lf_span] = _base + (uint32_t)i * VALUE_PART_FIX_NUM;
-      this->localFrees[i * lf_span + 1] =
-          this->localFrees[i * lf_span] + VALUE_PART_FIX_NUM - 1;
-    }
-  }
+  void SetLocalFree(BLOCK_INDEX_TYPE _base) {}
 
   // recover free list from pmem
-  void recovery(char* memBase){
-
-  };
+  void Recovery(char* _memBase){};
   // push one free block
-  void push(int _size, BLOCK_INDEX_TYPE _index) {
-    if (_size < 3) return;
-
-    if (tid >= 0 && tid < THREAD_NUM) {
-      this->localQueues[tid][_size].emplace_back(_index);
-    }
-  };
+  void Push(int _size, BLOCK_INDEX_TYPE _index){};
 
   // try to pop one appropriate free block
-  bool pop(int _size, BLOCK_INDEX_TYPE* _index) {
-    if (tid >= 0 && tid < THREAD_NUM &&
-        this->localFrees[tid * lf_span + 1] - this->localFrees[tid * lf_span] >=
-            (uint32_t)_size) {
-      *_index = this->localFrees[tid * lf_span];
-      this->localFrees[tid * lf_span] += _size;
-      return true;
-    } else {
-      bool found = false;
-      if (tid >= 0 && tid < THREAD_NUM) {
-        found = !this->localQueues[tid][_size].empty();
-        if (found) {
-          *_index = this->localQueues[tid][_size].back();
-          this->localQueues[tid][_size].pop_back();
-        }
-
-        if (!found) {
-          for (size_t i = _size + 3; i < this->localQueues[tid].size(); ++i) {
-            found = !this->localQueues[tid][i].empty();
-            if (found) {
-              *_index = this->localQueues[tid][i].back();
-              this->localQueues[tid][i].pop_back();
-              this->localQueues[tid][i - _size].emplace_back(*_index + _size);
-              break;
-            }
-          }
-        }
-      }
-
-      return found;
-    }
-  };
-
-  string getStatus() {
-    string ret = "local free list\n";
-    for (size_t i = 0; i < THREAD_NUM; ++i) {
-      ret += std::to_string(i) + ": " + std::to_string(localQueues[i].size());
-      ret += "\n";
-    }
-    return ret;
-  }
-
- private:
-  LocalFree localFrees;
-  LocalQueue localQueues[THREAD_NUM];
-};
-
-class KeyPool {
- public:
-  KeyPool(char* _keyBase, uint64_t _maxLen, int _step = 1)
-      : keyBuffer(new char[_maxLen]),
-        keyBase(_keyBase),
-        pointer(new KEY_INDEX_TYPE[KV_NUM_MAX]),
-        step(_step) {}
-  ~KeyPool() {
-    delete[] keyBuffer;
-    delete[] pointer;
-    pointer = nullptr;
-    keyBase = nullptr;
-    keyBuffer = nullptr;
-  }
-
-  void setLocalKey(KEY_INDEX_TYPE _base) {
-    for (int i = 0; i < THREAD_NUM; ++i) {
-      this->localKeys[i * lf_span] = _base + (uint32_t)i * KEY_PART_FIX_NUM;
-      this->localKeys[i * lf_span + 1] =
-          this->localKeys[i * lf_span] + KEY_PART_FIX_NUM - 1;
-    }
-  }
-
-  void push(const Slice& _key, VALUE_LEN_TYPE _len,
-            BLOCK_INDEX_TYPE _blockIndex, Entry* _entry) {
-    KEY_INDEX_TYPE index;
-    if (tid >= 0 && tid < THREAD_NUM &&
-        this->localKeys[tid * lf_span + 1] > this->localKeys[tid * lf_span]) {
-      index = this->localKeys[tid * lf_span];
-      ++this->localKeys[tid * lf_span];
-    } else {
-      index = currentIndex.fetch_add(1);
-    }
-
-    auto oldHead = _entry->setHead(index);
-    pointer[index] = oldHead;
-    char* base = keyBuffer + static_cast<uint64_t>(index) * KEY_STORE_LEN;
-
-    memcpy(base, _key.data(), KEY_LEN);
-    memcpy(base + KEY_LEN, &_len, sizeof(VALUE_LEN_TYPE));
-    memcpy(base + KEY_STORE_VALUE_LINK_OFFSET, &_blockIndex,
-           sizeof(BLOCK_INDEX_TYPE));
-    pmem_memcpy_persist(keyBase + static_cast<uint64_t>(index) * KEY_STORE_LEN,
-                        base, KEY_STORE_LEN);
-  }
-  KEY_INDEX_TYPE find(const Slice& _key, KEY_INDEX_TYPE _index) {
-    KEY_INDEX_TYPE re = UINT32_MAX;
-    while (_index != UINT32_MAX) {
-      re = _index;
-      char* temp = next(_index);
-      if (memcmp(temp, _key.data(), KEY_LEN) == 0) {
-        return re;
-      }
-    }
-    return UINT32_MAX;
-  }
-
-  VALUE_LEN_TYPE getValLen(KEY_INDEX_TYPE _index) {
-    return *(VALUE_LEN_TYPE*)(keyBuffer +
-                              static_cast<uint64_t>(_index) * KEY_STORE_LEN +
-                              KEY_LEN);
-  }
-  BLOCK_INDEX_TYPE getValIndex(KEY_INDEX_TYPE _index) {
-    return *(BLOCK_INDEX_TYPE*)(keyBuffer +
-                                static_cast<uint64_t>(_index) * KEY_STORE_LEN +
-                                KEY_STORE_VALUE_LINK_OFFSET);
-  }
-  char* next(KEY_INDEX_TYPE& _index) {
-    char* key = keyBuffer + static_cast<uint64_t>(_index) * KEY_STORE_LEN;
-    _index = pointer[_index];
-    return key;
-  }
-
-  void update(KEY_INDEX_TYPE _keyIndex, VALUE_LEN_TYPE _len,
-              BLOCK_INDEX_TYPE blockIndex) {
-    char* base = keyBuffer + static_cast<uint64_t>(_keyIndex) * KEY_STORE_LEN;
-    memcpy(base + KEY_LEN, &_len, sizeof(VALUE_LEN_TYPE));
-    memcpy(base + KEY_STORE_VALUE_LINK_OFFSET, &blockIndex,
-           sizeof(BLOCK_INDEX_TYPE));
-    pmem_memcpy_persist(
-        keyBase + static_cast<uint64_t>(_keyIndex) * KEY_STORE_LEN, base,
-        KEY_STORE_LEN);
-  }
-  BLOCK_INDEX_TYPE recovery(KEY_INDEX_TYPE _keyIndex) {
-    KEY_INDEX_TYPE index = currentIndex.fetch_add(1);
-    pointer[index] = _keyIndex;
-    return index;
-  }
-  void recoveryKeyBuffer() {
-    VALUE_LEN_TYPE len = *(BLOCK_INDEX_TYPE*)(keyBase + KEY_LEN);
-    if (len == 0) {
-      return;
-    }
-    memcpy(keyBuffer, keyBase, KV_NUM_MAX * KEY_STORE_LEN);
-  }
-
-  KEY_INDEX_TYPE getKeyIndex() { return currentIndex.load(); }
-
- public:
-  std::atomic<KEY_INDEX_TYPE> currentIndex = {0};
-  LocalKey localKeys;
-  char* keyBuffer;
-  char* keyBase;
-  KEY_INDEX_TYPE* pointer;
-  int step;
+  bool Pop(int _size, BLOCK_INDEX_TYPE* _index) { return true; };
 };
 
 class KVStore {
  public:
-  KVStore(char* _memBase) {
-    this->valueBase = _memBase + (uint64_t)KV_NUM_MAX * KEY_STORE_LEN;
-    this->curValueIndex = 0;
-    this->freeList = new FreeList(VALUE_MAX_LEN, VALUE_BLOCK_LEN);
-    this->key_pool =
-        new KeyPool(_memBase, (uint64_t)KV_NUM_MAX * KEY_STORE_LEN);
+  KVStore(char* _memBase) : aep_base_(_memBase) {
+    this->key_buffer_ = new char[KV_NUM_MAX * KEY_LEN];
+    this->next_ = new KEY_INDEX_TYPE[KV_NUM_MAX];
+    this->block_index_ = new BLOCK_INDEX_TYPE[KV_NUM_MAX];
+    this->val_lens_ = new VALUE_LEN_TYPE[KV_NUM_MAX];
+    // TODO: ADD FREE LSIT
   };
-  virtual ~KVStore() {
-    delete this->freeList;
-    delete key_pool;
+  ~KVStore() {
+    // delete this->freeList;
+    delete this->next_;
+    delete this->key_buffer_;
+    delete this->block_index_;
   }
-  // set the offset of key index and value index
-  void recovery() {}
+
   // read key and value according to the index of key
   void read(KEY_INDEX_TYPE _index, string* _value) {
-    char* base =
-        key_pool->keyBuffer + static_cast<uint64_t>(_index) * KEY_STORE_LEN;
-    VALUE_LEN_TYPE dataLen = *(VALUE_LEN_TYPE*)(base + KEY_LEN);
-    BLOCK_INDEX_TYPE index =
-        *(BLOCK_INDEX_TYPE*)(base + KEY_STORE_VALUE_LINK_OFFSET);
-    _value->assign(this->valueBase + (uint64_t)index * VALUE_BLOCK_LEN,
-                   dataLen);
+    BLOCK_INDEX_TYPE index = block_index_[_index];
+    _value->assign(this->aep_base_ + (uint64_t)index * BLOCK_LEN + VALUE_OFFSET,
+                   val_lens_[index]);
   };
 
-  BLOCK_INDEX_TYPE getBlockIndex(const Slice& _value);
+  BLOCK_INDEX_TYPE GetBlockIndex(const Slice& _value);
 
-  // write kv pair to pmem
-  void write(const Slice& _key, const Slice& _value, Entry* _entry) {
+  // Write kv pair to pmem
+  void Write(const Slice& _key, const Slice& _value, Entry* _entry) {
     VALUE_LEN_TYPE dataLen = _value.size();
     // store and flush value
-    BLOCK_INDEX_TYPE bi = getBlockIndex(_value);
-
-
-    pmem_memcpy_persist(this->valueBase + (uint64_t)bi * VALUE_BLOCK_LEN,
-                        _value.data(), dataLen);
-
-    // add store into key pool.
-    key_pool->push(_key, dataLen, bi, _entry);
+    BLOCK_INDEX_TYPE bi = GetBlockIndex(_value);
+    size_t recordLen = RECORD_FIX_LEN + _value.size();
+    char* recordBuffer = new char[recordLen];
+    VALUE_LEN_TYPE len = _value.size();
+    memcpy(recordBuffer, _key.data(), KEY_LEN);
+    memcpy(recordBuffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
+    memcpy(recordBuffer + TIME_STAMP_OFFSET, "1234", TIME_STAMP_LEN);
+    memcpy(recordBuffer + VALUE_OFFSET, _value.data(), _value.size());
+    HASH_VALUE checkSum = DJBHash(recordBuffer, recordLen - CHECK_SUM_LEN);
+    memcpy(recordBuffer + recordLen - CHECK_SUM_LEN, &checkSum, CHECK_SUM_LEN);
+    // memcpy to pmem and flush
+    pmem_memcpy_persist(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, _value.data(),
+                        dataLen);
+    delete[] recordBuffer;
+    // Update key buffer in memory
+    KEY_INDEX_TYPE index;
+    index = current_key_index_.fetch_add(1);
+    auto oldHead = _entry->SetHead(index);
+    next_[index] = oldHead;
+    block_index_[index] = bi;
+    memcpy(key_buffer_ + index * KEY_LEN, _key.data(), KEY_LEN);
+    _entry->SetHead(index);
   };
 
-  void update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _index) {
-    char* base =
-        key_pool->keyBuffer + static_cast<uint64_t>(_index) * KEY_STORE_LEN;
-    VALUE_LEN_TYPE dataLen = *(VALUE_LEN_TYPE*)(base + KEY_LEN);
-    BLOCK_INDEX_TYPE blockIndex =
-        *(BLOCK_INDEX_TYPE*)(base + KEY_STORE_VALUE_LINK_OFFSET);
-    BLOCK_INDEX_TYPE newBi = getBlockIndex(_value);
+  void Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _index) {
+    VALUE_LEN_TYPE dataLen = val_lens_[_index];
+    BLOCK_INDEX_TYPE oldBlockIndex = block_index_[_index];
 
-    pmem_memcpy_persist(this->valueBase + (uint64_t)newBi * VALUE_BLOCK_LEN,
-                        _value.data(), _value.size());
-
-    key_pool->update(_index, _value.size(), newBi);
-    erase(dataLen, blockIndex);
+    BLOCK_INDEX_TYPE newBlockIndex = GetBlockIndex(_value);
+    size_t recordLen = RECORD_FIX_LEN + _value.size();
+    char* recordBuffer = new char[recordLen];
+    VALUE_LEN_TYPE len = _value.size();
+    memcpy(recordBuffer, _key.data(), KEY_LEN);
+    memcpy(recordBuffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
+    memcpy(recordBuffer + TIME_STAMP_OFFSET, "1234", TIME_STAMP_LEN);
+    memcpy(recordBuffer + VALUE_OFFSET, _value.data(), _value.size());
+    HASH_VALUE checkSum = DJBHash(recordBuffer, recordLen - CHECK_SUM_LEN);
+    memcpy(recordBuffer + recordLen - CHECK_SUM_LEN, &checkSum, CHECK_SUM_LEN);
+    // memcpy to pmem and flush
+    pmem_memcpy_persist(this->aep_base_ + (uint64_t)newBlockIndex * BLOCK_LEN,
+                        _value.data(), dataLen);
+    delete[] recordBuffer;
+    block_index_[_index] = newBlockIndex;
+    Recycle(dataLen, oldBlockIndex);
   }
 
-  // erase value according to its head index
-  void erase(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
-    int size = (_dataLen + VALUE_BLOCK_LEN - 1) / VALUE_BLOCK_LEN;
-    this->freeList->push(size, _index);
+  // Recycle value according to its head index
+  void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
+    // TODO: ADD freelist
+    int size = (RECORD_FIX_LEN + _dataLen + BLOCK_LEN - 1) / BLOCK_LEN;
+    this->aep_memory_controller_->Push(size, _index);
   }
 
-  void setValueIndex(BLOCK_INDEX_TYPE index) { curValueIndex.store(index); }
-  BLOCK_INDEX_TYPE getValueIndex() { return curValueIndex.load(); }
+  KEY_INDEX_TYPE Find(const Slice& _key, KEY_INDEX_TYPE _index) {
+    KEY_INDEX_TYPE re = UINT32_MAX;
+    while (_index != UINT32_MAX) {
+      re = _index;
+      char* temp = key_buffer_ + _index * KEY_LEN;
+      if (memcmp(temp, _key.data(), KEY_LEN) == 0) {
+        return re;
+      }
+      _index = next_[_index];
+    }
+    return UINT32_MAX;
+  }
 
  public:
-  KeyPool* key_pool;
-  FreeList* freeList;
+  AepMemoryController* aep_memory_controller_;
 
  private:
-  atomic<BLOCK_INDEX_TYPE> curValueIndex;
-  char* valueBase = nullptr;
+  atomic<BLOCK_INDEX_TYPE> cur_value_index_ = {0};
+  std::atomic<KEY_INDEX_TYPE> current_key_index_ = {0};
+  KEY_INDEX_TYPE* next_ = nullptr;
+  BLOCK_INDEX_TYPE* block_index_ = nullptr;
+  VALUE_LEN_TYPE* val_lens_ = nullptr;
+  char* key_buffer_ = nullptr;
+  char* aep_base_ = nullptr;
 };
 
 typedef uint32_t (*hash_func)(const char*, size_t size);
@@ -358,25 +200,25 @@ class HashMap {
 
   ~HashMap();
 
-  Status get(const Slice& _key, std::string* _value);
+  Status Get(const Slice& _key, std::string* _value);
 
-  Status set(const Slice& _key, const Slice& _value);
+  Status Set(const Slice& _key, const Slice& _value);
 
-  Status recovery(char* _base);
+  Status Recovery(char* _base);
 
-  void summary();
+  void Summary();
 
-  KVStore* kvStore;
+  KVStore* kv_store_;
 
  private:
-  uint32_t hashValue(const Slice& _key) const {
-    return this->hash(_key.data(), KEY_LEN);
+  uint32_t hash_value(const Slice& _key) const {
+    return this->hash_(_key.data(), KEY_LEN);
   }
-  Entry& entry(const uint32_t _hash) { return entries[_hash % HASH_MAP_SIZE]; }
+  Entry& entry(const uint32_t _hash) { return entries_[_hash % HASH_MAP_SIZE]; }
 
  private:
-  Entry* entries;
-  hash_func hash;
+  Entry* entries_;
+  hash_func hash_;
 };
 
 class NvmEngine : DB {
@@ -384,8 +226,8 @@ class NvmEngine : DB {
   static FILE* LOG;
 
  public:
-  static Status CreateOrOpen(const std::string& name, DB** dbptr,
-                             FILE* log_file = nullptr);
+  static Status CreateOrOpen(const std::string& _name, DB** _dbptr,
+                             FILE* _log_file = nullptr);
 
   NvmEngine(const std::string& _name, FILE* _log_file);
 
@@ -396,5 +238,5 @@ class NvmEngine : DB {
   Status Set(const Slice& _key, const Slice& _value) override;
 
  private:
-  HashMap* hashMap;
+  HashMap* hash_map_;
 };

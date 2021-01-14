@@ -33,7 +33,7 @@
 
 #if defined(__GNUC__)
 // Disable -Wconversion warnings (spuriously triggered when Traits::size_t and
-// Traits::index_t are set to < 32 bits, causing integer promotion, causing warnings
+// Traits::index_t are Set to < 32 bits, causing integer promotion, causing warnings
 // upon assigning any computed values)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
@@ -131,7 +131,7 @@ namespace moodycamel { namespace details {
 		static thread_id_hash_t prehash(thread_id_t const& x)
 		{
 #ifndef __APPLE__
-			return std::hash<std::thread::id>()(x);
+			return std::hash_<std::thread::id>()(x);
 #else
 			return *reinterpret_cast<thread_id_hash_t const*>(&x);
 #endif
@@ -140,7 +140,7 @@ namespace moodycamel { namespace details {
 } }
 #else
 // Use a nice trick from this answer: http://stackoverflow.com/a/8438730/21475
-// In order to get a numeric thread ID in a platform-independent way, we use a thread-local
+// In order to Get a numeric thread ID in a platform-independent way, we use a thread-local
 // static variable's address as a thread identifier :-)
 #if defined(__GNUC__) || defined(__INTEL_COMPILER)
 #define MOODYCAMEL_THREADLOCAL __thread
@@ -302,7 +302,7 @@ typedef ::max_align_t std_max_align_t;      // libstdc++ forgot to add it to std
 typedef std::max_align_t std_max_align_t;   // Others (e.g. MSVC) insist it can *only* be accessed via std::
 #endif
 
-// Some platforms have incorrectly set max_align_t to a type with <8 bytes alignment even while supporting
+// Some platforms have incorrectly Set max_align_t to a type with <8 bytes alignment even while supporting
 // 8-byte aligned scalar values (*cough* 32-bit iOS). Work around this with our own union. See issue #64.
 typedef union {
   std_max_align_t x;
@@ -561,7 +561,7 @@ template<typename T> struct is_trivially_destructible : std::has_trivial_destruc
 		callback_t callback;
 		void* userData;
 
-		ThreadExitListener* next;		// reserved for use by the ThreadExitNotifier
+		ThreadExitListener* next_;		// reserved for use by the ThreadExitNotifier
 	};
 
 
@@ -571,7 +571,7 @@ template<typename T> struct is_trivially_destructible : std::has_trivial_destruc
 		static void subscribe(ThreadExitListener* listener)
 		{
 			auto& tlsInst = instance();
-			listener->next = tlsInst.tail;
+			listener->next_ = tlsInst.tail;
 			tlsInst.tail = listener;
 		}
 
@@ -579,12 +579,12 @@ template<typename T> struct is_trivially_destructible : std::has_trivial_destruc
 		{
 			auto& tlsInst = instance();
 			ThreadExitListener** prev = &tlsInst.tail;
-			for (auto ptr = tlsInst.tail; ptr != nullptr; ptr = ptr->next) {
+			for (auto ptr = tlsInst.tail; ptr != nullptr; ptr = ptr->next_) {
 				if (ptr == listener) {
-					*prev = ptr->next;
+					*prev = ptr->next_;
 					break;
 				}
-				prev = &ptr->next;
+				prev = &ptr->next_;
 			}
 		}
 
@@ -597,7 +597,7 @@ template<typename T> struct is_trivially_destructible : std::has_trivial_destruc
 		{
 			// This thread is about to exit, let everyone know!
 			assert(this == &instance() && "If this assert fails, you likely have a buggy compiler! Change the preprocessor conditions such that MOODYCAMEL_CPP11_THREAD_LOCAL_SUPPORTED is no longer defined.");
-			for (auto ptr = tail; ptr != nullptr; ptr = ptr->next) {
+			for (auto ptr = tail; ptr != nullptr; ptr = ptr->next_) {
 				ptr->callback(ptr->userData);
 			}
 		}
@@ -1164,8 +1164,8 @@ class ConcurrentQueue
     // The idea is roughly as follows:
     // Every 256 items from one producer, make everyone rotate (increase the global offset) -> this means the highest efficiency consumer dictates the rotation speed of everyone else, more or less
     // If you see that the global offset has changed, you must reset your consumption counter and move to your designated place
-    // If there's no items where you're supposed to be, keep moving until you find a producer with some items
-    // If the global offset has not changed but you've run out of items to consume, move over from your current position until you find an producer with something in it
+    // If there's no items where you're supposed to be, keep moving until you Find a producer with some items
+    // If the global offset has not changed but you've run out of items to consume, move over from your current position until you Find an producer with something in it
 
     if (token.desiredProducer == nullptr || token.lastKnownGlobalOffset != globalExplicitConsumerOffset.load(std::memory_order_relaxed)) {
       if (!update_current_producer_after_rotation(token)) {
@@ -1441,7 +1441,7 @@ class ConcurrentQueue
       debug::DebugLock lock(mutex);
 #endif
       // We know that the should-be-on-freelist bit is 0 at this point, so it's safe to
-      // set it using a fetch_add
+      // Set it using a fetch_add
       if (node->freeListRefs.fetch_add(SHOULD_BE_ON_FREELIST, std::memory_order_acq_rel) == 0) {
         // Oh look! We were the last ones referencing this node, and we know
         // we want to add it to the free list, so let's do it!
@@ -1556,7 +1556,7 @@ class ConcurrentQueue
           }
         }
 
-        // Aha, empty; make sure we have all other memory effects that happened before the empty flags were set
+        // Aha, empty; make sure we have all other memory effects that happened before the empty flags were Set
         std::atomic_thread_fence(std::memory_order_acquire);
         return true;
       }
@@ -1771,7 +1771,7 @@ private:
       // Since we're in the destructor, we can assume all elements
       // are either completely dequeued or completely not (no halfways).
       if (this->tailBlock != nullptr) {		// Note this means there must be a block index too
-        // First find the block that's partially dequeued, if any
+        // First Find the block that's partially dequeued, if any
         Block* halfDequeuedBlock = nullptr;
         if ((this->headIndex.load(std::memory_order_relaxed) & static_cast<index_t>(BLOCK_SIZE - 1)) != 0) {
           // The head's not on a block boundary, meaning a block somewhere is partially dequeued
@@ -1955,7 +1955,7 @@ private:
         // This ensures that whatever the value we got loaded into overcommit, the load of dequeueOptisticCount in
         // the fetch_add below will result in a value at least as recent as that (and therefore at least as large).
         // Note that I believe a compiler (signal) fence here would be sufficient due to the nature of fetch_add (all
-        // read-modify-write operations are guaranteed to work on the latest value in the modification order), but
+        // read-modify-Write operations are guaranteed to work on the latest value in the modification order), but
         // unfortunately that can't be shown to be correct using only the C++11 standard.
         // See http://stackoverflow.com/questions/18223161/what-are-the-c11-memory-ordering-guarantees-in-this-corner-case
         std::atomic_thread_fence(std::memory_order_acquire);
@@ -1995,7 +1995,7 @@ private:
 
           // We need to be careful here about subtracting and dividing because of index wrap-around.
           // When an index wraps, we need to preserve the sign of the offset when dividing it by the
-          // block size (in order to get a correct signed block count offset in all cases):
+          // block size (in order to Get a correct signed block count offset in all cases):
           auto headBase = localBlockIndex->entries[localBlockIndexHead].base;
           auto blockBaseIndex = index & ~static_cast<index_t>(BLOCK_SIZE - 1);
           auto offset = static_cast<size_t>(static_cast<typename std::make_signed<index_t>::type>(blockBaseIndex - headBase) / BLOCK_SIZE);
@@ -2029,7 +2029,7 @@ private:
         }
         else {
           // Wasn't anything to dequeue after all; make the effective dequeue count eventually consistent
-          this->dequeueOvercommit.fetch_add(1, std::memory_order_release);		// Release so that the fetch_add on dequeueOptimisticCount is guaranteed to happen before this write
+          this->dequeueOvercommit.fetch_add(1, std::memory_order_release);		// Release so that the fetch_add on dequeueOptimisticCount is guaranteed to happen before this Write
         }
       }
 
@@ -2092,7 +2092,7 @@ private:
             }
 
             // pr_blockIndexFront is updated inside new_block_index, so we need to
-            // update our fallback value too (since we keep the new index even if we
+            // Update our fallback value too (since we keep the new index even if we
             // later fail)
             originalBlockIndexFront = originalBlockIndexSlotsUsed;
           }
@@ -2673,7 +2673,7 @@ private:
           idxEntry->value.store(newBlock, std::memory_order_relaxed);
 
           // Store the chain of blocks so that we can undo if later allocations fail,
-          // and so that we can find the blocks when we do the actual enqueueing
+          // and so that we can Find the blocks when we do the actual enqueueing
           if ((startTailIndex & static_cast<index_t>(BLOCK_SIZE - 1)) != 0 || firstAllocatedBlock != nullptr) {
             assert(this->tailBlock != nullptr);
             this->tailBlock->next = newBlock;
@@ -2864,7 +2864,7 @@ private:
     }
 
    private:
-    // The block size must be > 1, so any number with the low bit set is an invalid block base index
+    // The block size must be > 1, so any number with the low bit Set is an invalid block base index
     static const index_t INVALID_BLOCK_BASE = 1;
 
     struct BlockIndexEntry
@@ -3132,23 +3132,23 @@ private:
 					if (implicit) {
 						auto prod = static_cast<ImplicitProducer*>(ptr);
 						stats.queueClassBytes += sizeof(ImplicitProducer);
-						auto head = prod->headIndex.load(std::memory_order_relaxed);
+						auto head_ = prod->headIndex.load(std::memory_order_relaxed);
 						auto tail = prod->tailIndex.load(std::memory_order_relaxed);
-						auto hash = prod->blockIndex.load(std::memory_order_relaxed);
-						if (hash != nullptr) {
-							for (size_t i = 0; i != hash->capacity; ++i) {
-								if (hash->index[i]->key.load(std::memory_order_relaxed) != ImplicitProducer::INVALID_BLOCK_BASE && hash->index[i]->value.load(std::memory_order_relaxed) != nullptr) {
+						auto hash_ = prod->block_index_.load(std::memory_order_relaxed);
+						if (hash_ != nullptr) {
+							for (size_t i = 0; i != hash_->capacity; ++i) {
+								if (hash_->index[i]->key.load(std::memory_order_relaxed) != ImplicitProducer::INVALID_BLOCK_BASE && hash_->index[i]->value.load(std::memory_order_relaxed) != nullptr) {
 									++stats.allocatedBlocks;
 									++stats.ownedBlocksImplicit;
 								}
 							}
-							stats.implicitBlockIndexBytes += hash->capacity * sizeof(typename ImplicitProducer::BlockIndexEntry);
-							for (; hash != nullptr; hash = hash->prev) {
-								stats.implicitBlockIndexBytes += sizeof(typename ImplicitProducer::BlockIndexHeader) + hash->capacity * sizeof(typename ImplicitProducer::BlockIndexEntry*);
+							stats.implicitBlockIndexBytes += hash_->capacity * sizeof(typename ImplicitProducer::BlockIndexEntry);
+							for (; hash_ != nullptr; hash_ = hash_->prev) {
+								stats.implicitBlockIndexBytes += sizeof(typename ImplicitProducer::BlockIndexHeader) + hash_->capacity * sizeof(typename ImplicitProducer::BlockIndexEntry*);
 							}
 						}
-						for (; details::circular_less_than<index_t>(head, tail); head += BLOCK_SIZE) {
-							//auto block = prod->get_block_index_entry_for_index(head);
+						for (; details::circular_less_than<index_t>(head_, tail); head_ += BLOCK_SIZE) {
+							//auto block = prod->get_block_index_entry_for_index(head_);
 							++stats.usedBlocks;
 						}
 					}
@@ -3166,10 +3166,10 @@ private:
 									wasNonEmpty = wasNonEmpty || block != tailBlock;
 								}
 								++stats.ownedBlocksExplicit;
-								block = block->next;
+								block = block->next_;
 							} while (block != tailBlock);
 						}
-						auto index = prod->blockIndex.load(std::memory_order_relaxed);
+						auto index = prod->block_index_.load(std::memory_order_relaxed);
 						while (index != nullptr) {
 							stats.explicitBlockIndexBytes += sizeof(typename ExplicitProducer::BlockIndexHeader) + index->size * sizeof(typename ExplicitProducer::BlockIndexEntry);
 							index = static_cast<typename ExplicitProducer::BlockIndexHeader*>(index->prev);
@@ -3414,8 +3414,8 @@ private:
               auto empty = details::invalid_thread_id;
 #ifdef MOODYCAMEL_CPP11_THREAD_LOCAL_SUPPORTED
               auto reusable = details::invalid_thread_id2;
-							if ((probedKey == empty    && mainHash->entries[index].key.compare_exchange_strong(empty,    id, std::memory_order_relaxed, std::memory_order_relaxed)) ||
-								(probedKey == reusable && mainHash->entries[index].key.compare_exchange_strong(reusable, id, std::memory_order_acquire, std::memory_order_acquire))) {
+							if ((probedKey == empty    && mainHash->entries_[index].key.compare_exchange_strong(empty,    id, std::memory_order_relaxed, std::memory_order_relaxed)) ||
+								(probedKey == reusable && mainHash->entries_[index].key.compare_exchange_strong(reusable, id, std::memory_order_acquire, std::memory_order_acquire))) {
 #else
               if ((probedKey == empty    && mainHash->entries[index].key.compare_exchange_strong(empty,    id, std::memory_order_relaxed, std::memory_order_relaxed))) {
 #endif
@@ -3503,8 +3503,8 @@ private:
           auto empty = details::invalid_thread_id;
 #ifdef MOODYCAMEL_CPP11_THREAD_LOCAL_SUPPORTED
           auto reusable = details::invalid_thread_id2;
-					if ((probedKey == empty    && mainHash->entries[index].key.compare_exchange_strong(empty,    id, std::memory_order_relaxed, std::memory_order_relaxed)) ||
-						(probedKey == reusable && mainHash->entries[index].key.compare_exchange_strong(reusable, id, std::memory_order_acquire, std::memory_order_acquire))) {
+					if ((probedKey == empty    && mainHash->entries_[index].key.compare_exchange_strong(empty,    id, std::memory_order_relaxed, std::memory_order_relaxed)) ||
+						(probedKey == reusable && mainHash->entries_[index].key.compare_exchange_strong(reusable, id, std::memory_order_acquire, std::memory_order_acquire))) {
 #else
           if ((probedKey == empty    && mainHash->entries[index].key.compare_exchange_strong(empty,    id, std::memory_order_relaxed, std::memory_order_relaxed))) {
 #endif
@@ -3529,29 +3529,29 @@ private:
 		// Remove from thread exit listeners
 		details::ThreadExitNotifier::unsubscribe(&producer->threadExitListener);
 
-		// Remove from hash
+		// Remove from hash_
 #ifdef MCDBGQ_NOLOCKFREE_IMPLICITPRODHASH
 		debug::DebugLock lock(implicitProdMutex);
 #endif
-		auto hash = implicitProducerHash.load(std::memory_order_acquire);
-		assert(hash != nullptr);		// The thread exit listener is only registered if we were added to a hash in the first place
+		auto hash_ = implicitProducerHash.load(std::memory_order_acquire);
+		assert(hash_ != nullptr);		// The thread exit listener is only registered if we were added to a hash_ in the first place
 		auto id = details::thread_id();
 		auto hashedId = details::hash_thread_id(id);
 		details::thread_id_t probedKey;
 
 		// We need to traverse all the hashes just in case other threads aren't on the current one yet and are
 		// trying to add an entry thinking there's a free slot (because they reused a producer)
-		for (; hash != nullptr; hash = hash->prev) {
+		for (; hash_ != nullptr; hash_ = hash_->prev) {
 			auto index = hashedId;
 			do {
-				index &= hash->capacity - 1;
-				probedKey = hash->entries[index].key.load(std::memory_order_relaxed);
+				index &= hash_->capacity - 1;
+				probedKey = hash_->entries_[index].key.load(std::memory_order_relaxed);
 				if (probedKey == id) {
-					hash->entries[index].key.store(details::invalid_thread_id2, std::memory_order_release);
+					hash_->entries_[index].key.store(details::invalid_thread_id2, std::memory_order_release);
 					break;
 				}
 				++index;
-			} while (probedKey != details::invalid_thread_id);		// Can happen if the hash has changed but we weren't put back in it yet, or if we weren't added to this hash in the first place
+			} while (probedKey != details::invalid_thread_id);		// Can happen if the hash_ has changed but we weren't put back in it yet, or if we weren't added to this hash_ in the first place
 		}
 
 		// Mark the queue as being recyclable

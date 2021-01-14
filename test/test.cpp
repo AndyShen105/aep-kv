@@ -73,7 +73,7 @@ void test2() {
   db->Set(k, v);
   std::string a;
   db->Get(k, &a);
-  printf("get old val %s\n", a.data());
+  printf("Get old val %s\n", a.data());
 
   Slice v2;
   v2.size() = 250;
@@ -83,7 +83,7 @@ void test2() {
 
   std::string b;
   db->Get(k, &b);
-  printf("get new val %s\n", b.data());
+  printf("Get new val %s\n", b.data());
 
   Slice v3;
   v3.size() = 240;
@@ -92,7 +92,7 @@ void test2() {
   db->Set(k, v3);
   std::string c;
   db->Get(k, &c);
-  printf("get new val %s\n", c.data());
+  printf("Get new val %s\n", c.data());
 
   free(k.data());
   free(v.data());
@@ -123,8 +123,8 @@ void test3() {
       std::string a;
 
       db->Get(slice, &a);
-      printf("set size %d\n", v.size());
-      printf("get size %d\n", a.size());
+      printf("Set size %d\n", v.size());
+      printf("Get size %d\n", a.size());
     }
     compare.push_back(k);
     compare.push_back(v);*/
@@ -140,8 +140,8 @@ void test3() {
       count++;
     } else {
       printf("set key %s \n", compare.at(i).data());
-      printf("set val %s size %d\n", compare.at(i + 1).data(), compare.at(i + 1).size());
-      printf("get val %s size %d\n", a.data(), a.size());
+      printf("Set val %s size %d\n", compare.at(i + 1).data(), compare.at(i + 1).size());
+      printf("Get val %s size %d\n", a.data(), a.size());
     }
   }
 
