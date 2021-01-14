@@ -32,5 +32,8 @@
 *.app
 
 # User
+sync_code.sh
+judge
+
 
 

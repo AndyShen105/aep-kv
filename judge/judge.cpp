@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
   init_pool_seed();
 
   FILE* log_file = fopen(
-      "/home/dbdm/tair-contest/judge/performance.log", "w");
+      "performance.log", "w");
 
   DB::CreateOrOpen("DB", &db,
                    log_file);

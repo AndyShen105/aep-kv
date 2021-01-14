@@ -1,7 +1,7 @@
 #!/bin/bash
 
 INCLUDE_DIR="../include"
-LIB_PATH=$1
+LIB_PATH="../lib"
 set_per_thread=$2
 get_per_thread=$3
 
@@ -20,6 +20,5 @@ if [ $? -ne 0 ]; then
 fi
 
 rm -f /home/andyshen/code/tair2/tair-contest/judge/DB
-#sshpass -p123456 ssh root@172.26.0.111 "rm -rf /mnt/pmem1/kv_db"
 #./judge -s $set_per_thread -g $get_per_thread
 

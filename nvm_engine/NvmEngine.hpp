@@ -35,8 +35,8 @@ static const uint8_t VALUE_OFFSET = VERSION_OFFSET + VERSION_LEN;
 
 // aep setting
 static const uint8_t BLOCK_LEN = 64;
-// static const uint64_t FILE_SIZE = 68719476736UL;
-static const uint64_t FILE_SIZE = 10000000UL;
+static const uint64_t FILE_SIZE = 68719476736UL;
+// static const uint64_t FILE_SIZE = 10000000UL;
 
 // hash setting
 static const uint32_t KV_NUM_MAX = 16 * 24 * 1024 * 1024 * 0.60;
@@ -72,16 +72,16 @@ class Entry {
 
 class AepMemoryController {
  public:
-  AepMemoryController(int _max_size) {
+  explicit AepMemoryController(uint64_t _max_size) {
     max_block_index_ = ceil((double)_max_size / BLOCK_LEN) + 1;
-  };
+  }
 
   void Push(int _size, BLOCK_INDEX_TYPE _index){};
 
   bool Pop(int _size, BLOCK_INDEX_TYPE* _index) {
     *_index = current_block_index_.fetch_add(_size);
     return *_index < max_block_index_;
-  };
+  }
 
  private:
   BLOCK_INDEX_TYPE max_block_index_;
@@ -90,7 +90,7 @@ class AepMemoryController {
 
 class KVStore {
  public:
-  KVStore(char* _memBase) : aep_base_(_memBase) {
+  explicit KVStore(char* _memBase) : aep_base_(_memBase) {
     this->key_buffer_ = new char[KV_NUM_MAX * KEY_LEN];
     this->next_ = new KEY_INDEX_TYPE[KV_NUM_MAX];
     this->block_index_ = new BLOCK_INDEX_TYPE[KV_NUM_MAX];
@@ -114,7 +114,7 @@ class KVStore {
     _value->assign(
         this->aep_base_ + (uint64_t)block_index * BLOCK_LEN + VALUE_OFFSET,
         val_lens_[_index]);
-  };
+  }
 
   // Write kv pair to pmem
   void Write(const Slice& _key, const Slice& _value, Entry* _entry);
@@ -164,9 +164,6 @@ class KVStore {
     }
   }
 
- public:
-  AepMemoryController* aep_memory_controller_;
-
  private:
   std::atomic<KEY_INDEX_TYPE> current_key_index_ = {0};
   KEY_INDEX_TYPE* next_ = nullptr;
@@ -175,6 +172,7 @@ class KVStore {
   VERSION_TYPE* versions_;
   char* key_buffer_ = nullptr;
   char* aep_base_ = nullptr;
+  AepMemoryController* aep_memory_controller_ = nullptr;
 };
 
 typedef uint32_t (*hash_func)(const char*, size_t size);
@@ -197,9 +195,6 @@ class HashMap {
   KVStore* kv_store_;
 
  private:
-  uint32_t hash_value(const Slice& _key) const {
-    return this->hash_(_key.data(), KEY_LEN);
-  }
   Entry& entry(const uint32_t _hash) { return entries_[_hash % HASH_MAP_SIZE]; }
 
  private:

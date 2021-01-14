@@ -15,13 +15,15 @@ BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
   VALUE_LEN_TYPE data_len = _value.size();
   int block_num = (RECORD_FIX_LEN + data_len + BLOCK_LEN - 1) / BLOCK_LEN;
   BLOCK_INDEX_TYPE block_index = UINT32_MAX;
-  aep_memory_controller_->Pop(block_num, &block_index);
+  if (!aep_memory_controller_->Pop(block_num, &block_index)) {
+    block_index = UINT32_MAX;
+    std::cout << "Out of memory." << std::endl;
+    exit(4);
+  }
   return block_index;
 }
 
 void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
-  VALUE_LEN_TYPE data_len = _value.size();
-  // store and flush value
   BLOCK_INDEX_TYPE bi = GetBlockIndex(_value);
   size_t record_len = RECORD_FIX_LEN + _value.size();
   char* record_buffer = new char[record_len];
@@ -47,7 +49,8 @@ void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
   memcpy(key_buffer_ + index * KEY_LEN, _key.data(), KEY_LEN);
 }
 
-void KVStore::Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _index) {
+void KVStore::Update(const Slice& _key, const Slice& _value,
+                     KEY_INDEX_TYPE _index) {
   VALUE_LEN_TYPE data_len = val_lens_[_index];
   BLOCK_INDEX_TYPE old_block_index = block_index_[_index];
 
@@ -55,10 +58,10 @@ void KVStore::Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _ind
   size_t record_len = RECORD_FIX_LEN + _value.size();
   char* record_buffer = new char[record_len];
   VALUE_LEN_TYPE len = _value.size();
-
+  VERSION_TYPE version = versions_[_index] + 1;
   memcpy(record_buffer + KEY_OFFSET, _key.data(), KEY_LEN);
   memcpy(record_buffer + VAL_SIZE_OFFSET, &len, VAL_SIZE_LEN);
-  memcpy(record_buffer + VERSION_OFFSET, &versions_[_index], VERSION_LEN);
+  memcpy(record_buffer + VERSION_OFFSET, &version, VERSION_LEN);
   memcpy(record_buffer + VALUE_OFFSET, _value.data(), _value.size());
   HASH_VALUE check_sum = DJBHash(record_buffer, record_len - CHECK_SUM_LEN);
   memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
@@ -67,7 +70,7 @@ void KVStore::Update(const Slice& _key, const Slice& _value, KEY_INDEX_TYPE _ind
                       record_buffer, record_len);
   delete[] record_buffer;
   block_index_[_index] = new_block_index;
-  versions_[_index] = versions_[_index] + 1;
+  versions_[_index] = version;
   val_lens_[_index] = _value.size();
   Recycle(data_len, old_block_index);
 }
@@ -79,7 +82,7 @@ HashMap::HashMap(char* _base, pFunction _hash) : hash_(_hash) {
     entry_allocator.construct(this->entries_ + i);
   }
   kv_store_ = new KVStore(_base);
-  //Recovery(_base);
+  // Recovery(_base);
 }
 
 HashMap::~HashMap() {
@@ -123,7 +126,6 @@ Status HashMap::Recovery(char* _base) {
   char* record_base = nullptr;
   VALUE_LEN_TYPE len = UINT16_MAX;
   HASH_VALUE check_sum = UINT32_MAX;
-  uint32_t time_stamp = UINT32_MAX;
   uint16_t record_len = 0;
 
   while (offset < FILE_SIZE / BLOCK_LEN) {
@@ -131,7 +133,7 @@ Status HashMap::Recovery(char* _base) {
     record_base = _base + (uint64_t)offset * BLOCK_LEN;
     len = *(VALUE_LEN_TYPE*)(record_base);
     record_len = len + RECORD_FIX_LEN;
-    HASH_VALUE check_sum_new = DJBHash(record_base, record_len);
+    HASH_VALUE check_sum_new = DJBHash(record_base, record_len - CHECK_SUM_LEN);
     check_sum = *(HASH_VALUE*)(record_base + (record_len - CHECK_SUM_LEN));
     if (check_sum_new == check_sum) {
       uint32_t hash_val = DJBHash(record_base + VAL_SIZE_LEN);
