@@ -16,7 +16,8 @@ using std::string;
 using std::vector;
 
 class AepMemoryController;
-thread_local AepMemoryController thread_local_aep_controller;
+thread_local AepMemoryController* thread_local_aep_controller = new AepMemoryController;
+thread_local size_t write_count_{0};
 
 HASH_VALUE DJBHash(const char* _str, size_t _size = 16) {
   unsigned int hash = 5381;
@@ -78,7 +79,7 @@ class KVStore {
   void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
     // TODO: ADD freelist
     int size = (RECORD_FIX_LEN + _dataLen + BLOCK_LEN - 1) / BLOCK_LEN;
-    thread_local_aep_controller.Delete(size, _index);
+    thread_local_aep_controller->Delete(size, _index);
   }
 
   KEY_INDEX_TYPE Find(const Slice& _key, KEY_INDEX_TYPE _index) {

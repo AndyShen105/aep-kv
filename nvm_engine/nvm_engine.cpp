@@ -6,8 +6,7 @@
 FILE* nvm_engine::LOG;
 typedef hash_func pFunction;
 
-GlobalMemory* AepMemoryController::global_memory_ =
-    new GlobalMemory(FILE_SIZE);
+GlobalMemory* AepMemoryController::global_memory_ = new GlobalMemory(FILE_SIZE);
 
 Status DB::CreateOrOpen(const std::string& _name, DB** _db, FILE* _log_file) {
   return nvm_engine::CreateOrOpen(_name, _db, _log_file);
@@ -19,18 +18,19 @@ BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
   VALUE_LEN_TYPE data_len = _value.size();
   int block_num = (RECORD_FIX_LEN + data_len + BLOCK_LEN - 1) / BLOCK_LEN;
   BLOCK_INDEX_TYPE block_index = UINT32_MAX;
-  if (!thread_local_aep_controller.New(block_num, &block_index)) {
+  if (!thread_local_aep_controller->New(block_num, &block_index)) {
     block_index = UINT32_MAX;
-    std::cout << "Out of memory." << std::endl;
-    exit(4);
+    std::cout << "Out of memory, when allocate an aep space." << std::endl;
+    abort();
   }
   return block_index;
 }
 
 void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
-  BLOCK_INDEX_TYPE bi = GetBlockIndex(_value);
+
+  BLOCK_INDEX_TYPE bi = 0;//GetBlockIndex(_value);
   size_t record_len = RECORD_FIX_LEN + _value.size();
-  char* record_buffer = new char[record_len];
+  char record_buffer[record_len];
   VALUE_LEN_TYPE len = _value.size();
   VERSION_TYPE version = 0;
   memcpy(record_buffer + KEY_OFFSET, _key.data(), KEY_LEN);
@@ -41,9 +41,9 @@ void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
   memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
   // memcpy to pmem and flush
 
-  pmem_memcpy_persist(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, record_buffer,
+  pmem_memcpy_nodrain(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, record_buffer,
                       record_len);
-  delete[] record_buffer;
+
   // Update key buffer in memory
   KEY_INDEX_TYPE index;
   index = current_key_index_.fetch_add(1);
@@ -61,7 +61,7 @@ void KVStore::Update(const Slice& _key, const Slice& _value,
 
   BLOCK_INDEX_TYPE new_block_index = GetBlockIndex(_value);
   size_t record_len = RECORD_FIX_LEN + _value.size();
-  char* record_buffer = new char[record_len];
+  char record_buffer[record_len];
   VALUE_LEN_TYPE len = _value.size();
   VERSION_TYPE version = versions_[_index] + 1;
   memcpy(record_buffer + KEY_OFFSET, _key.data(), KEY_LEN);
@@ -73,7 +73,6 @@ void KVStore::Update(const Slice& _key, const Slice& _value,
   // memcpy to pmem and flush
   pmem_memcpy_persist(this->aep_base_ + (uint64_t)new_block_index * BLOCK_LEN,
                       record_buffer, record_len);
-  delete[] record_buffer;
   block_index_[_index] = new_block_index;
   versions_[_index] = version;
   val_lens_[_index] = _value.size();
@@ -110,6 +109,7 @@ Status HashMap::Get(const Slice& _key, std::string* _value) {
 }
 
 Status HashMap::Set(const Slice& _key, const Slice& _value) {
+
   uint32_t hash_val = DJBHash(_key.data());
   Entry& entry = this->entry(hash_val);
   KEY_INDEX_TYPE head = entry.GetHead();
@@ -174,7 +174,7 @@ void HashMap::Summary() {
 }
 
 Status nvm_engine::CreateOrOpen(const std::string& _name, DB** _dbptr,
-                               FILE* _log_file) {
+                                FILE* _log_file) {
   auto* db = new nvm_engine(_name, _log_file);
   *_dbptr = db;
   return Ok;
@@ -199,5 +199,8 @@ Status nvm_engine::Get(const Slice& key, std::string* value) {
 }
 
 Status nvm_engine::Set(const Slice& key, const Slice& value) {
+  /*if (write_count_++ % 5000 == 0) {
+    std::cout << "write requests:" << write_count_ << std::endl;
+  }*/
   return hash_map_->Set(key, value);
 }

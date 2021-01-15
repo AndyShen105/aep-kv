@@ -5,6 +5,7 @@
 #include <atomic>
 
 FILE *log_file = fopen("./performance.log", "w");
+
 char *random_str(unsigned int size) {
   char *str = (char *)malloc(size + 1);
   for (unsigned int i = 0; i < size; i++) {
@@ -27,14 +28,14 @@ char *random_str(unsigned int size) {
   return str;
 }
 
-void test1() {
+void test_get_set() {
   DB *db = nullptr;
   DB::CreateOrOpen("./tmp", &db);
   Slice k;
   k.size() = 16;
   Slice v;
 
-  int times = 10000;
+  int times = 1000000;
   while (times--) {
     k.data() = random_str(16);
     v.size() = random() % 944 + 80;
@@ -48,14 +49,26 @@ void test1() {
     free(k.data());
     free(v.data());
   }
+}
 
-  char *t = "nbvXG0G8Y67Ie949";
-  Slice slice(t, 16);
+void test_set() {
+  DB *db = nullptr;
+  DB::CreateOrOpen("./tmp", &db);
+  Slice k;
+  k.size() = 16;
+  Slice v;
 
-  std::string a;
-  db->Get(slice, &a);
-  printf("key %s\n", slice.data());
-  printf("key %s\n", a.data());
+  int times = 1000000;
+  while (times--) {
+    k.data() = random_str(16);
+    v.size() = random() % 944 + 80;
+    v.data() = random_str(v.size());
+   /* printf("key %s\n", k.data());
+    printf("val %s\n", v.data());*/
+    db->Set(k, v);
+    free(k.data());
+    free(v.data());
+  }
 }
 
 void test2() {
@@ -164,4 +177,4 @@ void test4() {
   db->Get(slice_key, &b);
   std::cout << b << std::endl;
 }
-int main() { test2(); }
+int main() { test_set(); }

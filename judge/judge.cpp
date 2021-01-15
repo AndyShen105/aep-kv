@@ -21,7 +21,7 @@ using namespace std;
 typedef unsigned long long ull;
 
 const int NUM_TEST_CORRECTNESS = 10000;
-const int NUM_THREADS = 16;
+int NUM_THREADS = 1;
 int PER_SET = 50331648;
 int PER_GET = 2013265920;
 const ull BASE = 199997;
@@ -132,7 +132,7 @@ void* get_pure(void* id) {
 void config_parse(int argc, char* argv[]) {
   int opt = 0;
 
-  while ((opt = getopt(argc, argv, "hs:g:")) != -1) {
+  while ((opt = getopt(argc, argv, "hs:g:t:f")) != -1) {
     switch (opt) {
       case 'h':
         printf(
@@ -147,6 +147,8 @@ void config_parse(int argc, char* argv[]) {
         break;
       case 'g':
         PER_GET = atoi(optarg);
+      case 't':
+        NUM_THREADS = atoi(optarg);
       case 'f':
         TAGERT_FILE = optarg;
         break;

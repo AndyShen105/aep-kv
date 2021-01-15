@@ -4,6 +4,7 @@
 #pragma once
 #include <mutex>
 #include <stack>
+#include <thread>
 #include <unordered_map>
 #include "define.h"
 
@@ -74,6 +75,9 @@ class GlobalMemory {
       return false;
     }
     *_block_index = segment_index * kBlockPerSeg;
+    std::cout << "Thread id:" << std::this_thread::get_id()
+              << " allocate an segment, block index:" << *_block_index
+              << std::endl;
     return true;
   }
 
@@ -92,11 +96,8 @@ class AepMemoryController {
  public:
   explicit AepMemoryController() {
     if (!global_memory_->Allocate(&current_block_index_)) {
-      std::cout << "Out of memory" << std::endl;
-      exit(2);
-    } else {
-      std::cout << "allocate an segment, seg id:" << current_block_index_
-                << std::endl;
+      std::cout << "Out of memory when allocate segment." << std::endl;
+      abort();
     }
     max_block_index_ = current_block_index_ + GlobalMemory::kBlockPerSeg;
     free_list_ = new SimpleFreeList();
@@ -109,13 +110,14 @@ class AepMemoryController {
       size_t size = max_block_index_ - current_block_index_;
       free_list_->Push(current_block_index_, size);
 
-      if (!global_memory_->Allocate(&current_block_index_)) {
+      if (global_memory_->Allocate(&current_block_index_)) {
         max_block_index_ += current_block_index_ + GlobalMemory::kBlockPerSeg;
         *_index = current_block_index_++;
         return true;
       } else {
         auto free_list = global_memory_->free_list();
-        return free_list->Pop(_index, _size);
+        std::cout<<"aaaa";
+        return free_list->ThreadSafePop(_index, _size);
       }
     } else {
       *_index = current_block_index_++;
