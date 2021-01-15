@@ -24,7 +24,7 @@ static const uint8_t VERSION_OFFSET = KEY_OFFSET + KEY_LEN;
 static const uint8_t VALUE_OFFSET = VERSION_OFFSET + VERSION_LEN;
 
 // aep setting
-static const uint8_t BLOCK_LEN = 64;
+static Config CONFIG;
 //static const uint64_t FILE_SIZE = 68719476736UL;
 static const uint64_t FILE_SIZE = 10737418240UL;
 

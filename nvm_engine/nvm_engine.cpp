@@ -3,20 +3,23 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-FILE* nvm_engine::LOG;
+FILE* NvmEngine::LOG;
 typedef hash_func pFunction;
 
-GlobalMemory* AepMemoryController::global_memory_ = new GlobalMemory(FILE_SIZE);
+GlobalMemory* AepMemoryController::global_memory_ =
+    new GlobalMemory(FILE_SIZE);
 
-Status DB::CreateOrOpen(const std::string& _name, DB** _db, FILE* _log_file) {
-  return nvm_engine::CreateOrOpen(_name, _db, _log_file);
+Status DB::CreateOrOpen(const std::string& _name, Config* _config, DB** _db,
+                        FILE* _log_file) {
+  return NvmEngine::CreateOrOpen(_name, _config, _db, _log_file);
 }
 
 DB::~DB() = default;
 
 BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
   VALUE_LEN_TYPE data_len = _value.size();
-  int block_num = (RECORD_FIX_LEN + data_len + BLOCK_LEN - 1) / BLOCK_LEN;
+  int block_num =
+      (RECORD_FIX_LEN + data_len + CONFIG.block_size_ - 1) / CONFIG.block_size_;
   BLOCK_INDEX_TYPE block_index = UINT32_MAX;
   if (!thread_local_aep_controller->New(block_num, &block_index)) {
     block_index = UINT32_MAX;
@@ -27,8 +30,7 @@ BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
 }
 
 void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
-
-  BLOCK_INDEX_TYPE bi = 0;//GetBlockIndex(_value);
+  BLOCK_INDEX_TYPE bi = 0;  // GetBlockIndex(_value);
   size_t record_len = RECORD_FIX_LEN + _value.size();
   char record_buffer[record_len];
   VALUE_LEN_TYPE len = _value.size();
@@ -41,8 +43,8 @@ void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
   memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
   // memcpy to pmem and flush
 
-  pmem_memcpy_nodrain(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, record_buffer,
-                      record_len);
+  pmem_memcpy_nodrain(this->aep_base_ + (uint64_t)bi * CONFIG.block_size_,
+                      record_buffer, record_len);
 
   // Update key buffer in memory
   KEY_INDEX_TYPE index;
@@ -71,8 +73,9 @@ void KVStore::Update(const Slice& _key, const Slice& _value,
   HASH_VALUE check_sum = DJBHash(record_buffer, record_len - CHECK_SUM_LEN);
   memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
   // memcpy to pmem and flush
-  pmem_memcpy_persist(this->aep_base_ + (uint64_t)new_block_index * BLOCK_LEN,
-                      record_buffer, record_len);
+  pmem_memcpy_persist(
+      this->aep_base_ + (uint64_t)new_block_index * CONFIG.block_size_,
+      record_buffer, record_len);
   block_index_[_index] = new_block_index;
   versions_[_index] = version;
   val_lens_[_index] = _value.size();
@@ -109,7 +112,6 @@ Status HashMap::Get(const Slice& _key, std::string* _value) {
 }
 
 Status HashMap::Set(const Slice& _key, const Slice& _value) {
-
   uint32_t hash_val = DJBHash(_key.data());
   Entry& entry = this->entry(hash_val);
   KEY_INDEX_TYPE head = entry.GetHead();
@@ -133,9 +135,9 @@ Status HashMap::Recovery(char* _base) {
   HASH_VALUE check_sum = UINT32_MAX;
   uint16_t record_len = 0;
 
-  while (offset < FILE_SIZE / BLOCK_LEN) {
+  while (offset < FILE_SIZE / CONFIG.block_size_) {
     // check max offset
-    record_base = _base + (uint64_t)offset * BLOCK_LEN;
+    record_base = _base + (uint64_t)offset * CONFIG.block_size_;
     len = *(VALUE_LEN_TYPE*)(record_base);
     record_len = len + RECORD_FIX_LEN;
     HASH_VALUE check_sum_new = DJBHash(record_base, record_len - CHECK_SUM_LEN);
@@ -153,7 +155,7 @@ Status HashMap::Recovery(char* _base) {
         this->kv_store_->UpdateKeyInfo(
             head, offset, len, *(VERSION_TYPE*)(record_base + VERSION_OFFSET));
       }
-      int blockNum = (record_len + BLOCK_LEN - 1) / BLOCK_LEN;
+      int blockNum = (record_len + CONFIG.block_size_ - 1) / CONFIG.block_size_;
       offset += blockNum;
     } else {
       // recycle
@@ -170,17 +172,23 @@ void HashMap::Summary() {
           "Set %d(%d) timestamp:%ld Find times:%d rss:%ld cur block: %u\n", wt,
           000, time(nullptr), find_times, usage.ru_maxrss,
           this->kvStore->getValueIndex());*/
-  fflush(nvm_engine::LOG);
+  fflush(NvmEngine::LOG);
 }
 
-Status nvm_engine::CreateOrOpen(const std::string& _name, DB** _dbptr,
-                                FILE* _log_file) {
-  auto* db = new nvm_engine(_name, _log_file);
+Status NvmEngine::CreateOrOpen(const std::string& _name, Config* _config,
+                               DB** _dbptr, FILE* _log_file) {
+  if (_config != nullptr) {
+    CONFIG.block_size_ = _config->block_size_;
+    CONFIG.block_per_segment_ = _config->block_per_segment_;
+  }
+  std::cout << "Init config block size:" << CONFIG.block_size_
+            << " block per segments:" << CONFIG.block_per_segment_ << std::endl;
+  auto* db = new NvmEngine(_name, _log_file);
   *_dbptr = db;
   return Ok;
 }
 
-nvm_engine::nvm_engine(const std::string& _name, FILE* _log_file) {
+NvmEngine::NvmEngine(const std::string& _name, FILE* _log_file) {
   LOG = _log_file;
   char* base;
   int isPmem;
@@ -192,13 +200,13 @@ nvm_engine::nvm_engine(const std::string& _name, FILE* _log_file) {
   hash_map_ = new HashMap(base);
 }
 
-nvm_engine::~nvm_engine() { delete this->hash_map_; }
+NvmEngine::~NvmEngine() { delete this->hash_map_; }
 
-Status nvm_engine::Get(const Slice& key, std::string* value) {
+Status NvmEngine::Get(const Slice& key, std::string* value) {
   return hash_map_->Get(key, value);
 }
 
-Status nvm_engine::Set(const Slice& key, const Slice& value) {
+Status NvmEngine::Set(const Slice& key, const Slice& value) {
   /*if (write_count_++ % 5000 == 0) {
     std::cout << "write requests:" << write_count_ << std::endl;
   }*/

@@ -21,15 +21,18 @@ using namespace std;
 typedef unsigned long long ull;
 
 const int NUM_TEST_CORRECTNESS = 10000;
-int NUM_THREADS = 1;
-int PER_SET = 50331648;
-int PER_GET = 2013265920;
 const ull BASE = 199997;
 struct timeval TIME_START, TIME_END;
 const int MAX_POOL_SIZE = 1e7;
 int POOL_TOP = 0;
 ull key_pool[MAX_POOL_SIZE];
+
+// config for test
 int MODE = 1;
+int NUM_THREADS = 1;
+int PER_SET = 50331648;
+int PER_GET = 2013265920;
+Config config;
 std::string TAGERT_FILE;
 
 std::mutex mt2;
@@ -115,13 +118,11 @@ void* get_pure(void* id) {
     int id = ((int)n(mt) | 1) ^ 1;
     id %= POOL_TOP - 2;
     if (id - u > edge || u - id > edge) {
-      // 写
       unsigned int* start = rnd.nextUnsignedInt();
       Slice data_key((char*)(key_pool + id), 16);
       Slice data_value((char*)start, 80);
       db->Set(data_key, data_value);
     } else {
-      // 读
       Slice data_key((char*)(key_pool + id), 16);
       db->Get(data_key, &value);
     }
@@ -132,13 +133,18 @@ void* get_pure(void* id) {
 void config_parse(int argc, char* argv[]) {
   int opt = 0;
 
-  while ((opt = getopt(argc, argv, "hs:g:t:f")) != -1) {
+  while ((opt = getopt(argc, argv, "hs:g:t:x:y:")) != -1) {
     switch (opt) {
-      case 'h':
+      case 'h': {
         printf(
-            "Usage: ./judge -s <set-size-per-Thread> -g "
-            "<get-size-per-Thread> -f <aep-file-path>\n");
-        return;
+            "Usage: \n"
+            "-s :set size per Thread. \n"
+            "-g :get size per Thread. \n"
+            "-t :num threads.\n"
+            "-x :block size.\n"
+            "-y :block per segment.\n");
+        exit(0);
+      }
       case 'm':
         MODE = atoi(optarg);
         break;
@@ -147,10 +153,14 @@ void config_parse(int argc, char* argv[]) {
         break;
       case 'g':
         PER_GET = atoi(optarg);
+        break;
       case 't':
         NUM_THREADS = atoi(optarg);
-      case 'f':
-        TAGERT_FILE = optarg;
+        break;
+      case 'x':
+        config.block_size_= atoi(optarg);
+      case 'y':
+        config.block_per_segment_= atoi(optarg);
         break;
     }
   }
@@ -210,9 +220,9 @@ void test_correctness(pthread_t* tids) {
     if (expected_val == real_val) {
       sum++;
     }
-  /*  if (count++ % 100 == 0) {
-      std::cout << count << std::endl;
-    }*/
+    /*  if (count++ % 100 == 0) {
+        std::cout << count << std::endl;
+      }*/
     expected_val.clear();
     delete key_str;
   }
@@ -226,11 +236,10 @@ int main(int argc, char* argv[]) {
 
   init_pool_seed();
 
-  FILE* log_file = fopen(
-      "performance.log", "w");
+  FILE* log_file = fopen("performance.log", "w");
 
-  DB::CreateOrOpen("DB", &db,
-                   log_file);
+  DB::CreateOrOpen("DB", &config, &db, log_file);
+
   setenv("MALLOC_TRACE", "output", 1);
   mtrace();
   pthread_t tids[NUM_THREADS];
@@ -250,7 +259,7 @@ int main(int argc, char* argv[]) {
 
   printf("%.2lf\n%.2lf\n", sec_set / 1000.0, sec_set_get / 1000.0);
 
-  //test_correctness(tids);
+  // test_correctness(tids);
 
   return 0;
 }

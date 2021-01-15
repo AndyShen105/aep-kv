@@ -5,6 +5,11 @@
 
 enum Status : unsigned char { Ok, NotFound, IOError, OutOfMemory };
 
+typedef struct Config {
+  size_t block_size_ = 64;
+  uint64_t block_per_segment_ = 65535;
+} Config;
+
 class Slice {
  public:
   Slice() : _data(nullptr), _size(0) {}
@@ -42,7 +47,7 @@ class DB {
    *  You should Write your log to the log_file.
    *  Stdout, stderr would be redirect to /dev/null.
    */
-  static Status CreateOrOpen(const std::string& _name, DB** _db,
+  static Status CreateOrOpen(const std::string& _name, Config* _config, DB** _db,
                              FILE* _log_file = nullptr);
 
   /*

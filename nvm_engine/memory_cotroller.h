@@ -62,11 +62,8 @@ class SimpleFreeList : public FreeList {
 
 class GlobalMemory {
  public:
-  static const size_t kBlockPerSeg = 65536;
-
- public:
   explicit GlobalMemory(size_t _file_size) {
-    max_segment_index_ = _file_size / kBlockPerSeg;
+    max_segment_index_ = _file_size / CONFIG.block_per_segment_;
     global_free_list_ = new SimpleFreeList();
   }
   bool Allocate(BLOCK_INDEX_TYPE* _block_index) {
@@ -74,7 +71,7 @@ class GlobalMemory {
     if (segment_index >= max_segment_index_) {
       return false;
     }
-    *_block_index = segment_index * kBlockPerSeg;
+    *_block_index = segment_index * CONFIG.block_per_segment_;
     std::cout << "Thread id:" << std::this_thread::get_id()
               << " allocate an segment, block index:" << *_block_index
               << std::endl;
@@ -99,7 +96,7 @@ class AepMemoryController {
       std::cout << "Out of memory when allocate segment." << std::endl;
       abort();
     }
-    max_block_index_ = current_block_index_ + GlobalMemory::kBlockPerSeg;
+    max_block_index_ = current_block_index_ + CONFIG.block_per_segment_;
     free_list_ = new SimpleFreeList();
   }
   ~AepMemoryController() { delete free_list_; }
@@ -111,7 +108,7 @@ class AepMemoryController {
       free_list_->Push(current_block_index_, size);
 
       if (global_memory_->Allocate(&current_block_index_)) {
-        max_block_index_ += current_block_index_ + GlobalMemory::kBlockPerSeg;
+        max_block_index_ += current_block_index_ + CONFIG.block_per_segment_;
         *_index = current_block_index_++;
         return true;
       } else {

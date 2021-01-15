@@ -66,7 +66,7 @@ class KVStore {
   void Read(KEY_INDEX_TYPE _index, string* _value) {
     BLOCK_INDEX_TYPE block_index = block_index_[_index];
     _value->assign(
-        this->aep_base_ + (uint64_t)block_index * BLOCK_LEN + VALUE_OFFSET,
+        this->aep_base_ + (uint64_t)block_index * CONFIG.block_size_ + VALUE_OFFSET,
         val_lens_[_index]);
   }
 
@@ -78,7 +78,7 @@ class KVStore {
   // Recycle value according to its head index
   void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
     // TODO: ADD freelist
-    int size = (RECORD_FIX_LEN + _dataLen + BLOCK_LEN - 1) / BLOCK_LEN;
+    int size = (RECORD_FIX_LEN + _dataLen + CONFIG.block_size_ - 1) / CONFIG.block_size_;
     thread_local_aep_controller->Delete(size, _index);
   }
 
@@ -130,7 +130,7 @@ class KVStore {
 
 typedef uint32_t (*hash_func)(const char*, size_t size);
 
-class nvm_engine;
+class NvmEngine;
 class HashMap {
  public:
   explicit HashMap(char* _base, hash_func _hash = DJBHash);
@@ -155,17 +155,17 @@ class HashMap {
   hash_func hash_;
 };
 
-class nvm_engine : DB {
+class NvmEngine : DB {
  public:
   static FILE* LOG;
 
  public:
-  static Status CreateOrOpen(const std::string& _name, DB** _dbptr,
+  static Status CreateOrOpen(const std::string& _name, Config* _config, DB** _dbptr,
                              FILE* _log_file = nullptr);
 
-  nvm_engine(const std::string& _name, FILE* _log_file);
+  NvmEngine(const std::string& _name, FILE* _log_file);
 
-  ~nvm_engine() override;
+  ~NvmEngine() override;
 
   Status Get(const Slice& _key, std::string* _value) override;
 
