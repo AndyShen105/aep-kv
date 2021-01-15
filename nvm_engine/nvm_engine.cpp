@@ -1,12 +1,16 @@
-#include "NvmEngine.hpp"
+#include "nvm_engine.hpp"
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-FILE* NvmEngine::LOG;
+FILE* nvm_engine::LOG;
 typedef hash_func pFunction;
+
+GlobalMemory* AepMemoryController::global_memory_ =
+    new GlobalMemory(FILE_SIZE);
+
 Status DB::CreateOrOpen(const std::string& name, DB** dbptr, FILE* log_file) {
-  return NvmEngine::CreateOrOpen(name, dbptr, log_file);
+  return nvm_engine::CreateOrOpen(name, dbptr, log_file);
 }
 
 DB::~DB() = default;
@@ -15,7 +19,7 @@ BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
   VALUE_LEN_TYPE data_len = _value.size();
   int block_num = (RECORD_FIX_LEN + data_len + BLOCK_LEN - 1) / BLOCK_LEN;
   BLOCK_INDEX_TYPE block_index = UINT32_MAX;
-  if (!aep_memory_controller_->Pop(block_num, &block_index)) {
+  if (!thread_local_aep_controller.New(block_num, &block_index)) {
     block_index = UINT32_MAX;
     std::cout << "Out of memory." << std::endl;
     exit(4);
@@ -36,6 +40,7 @@ void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
   HASH_VALUE check_sum = DJBHash(record_buffer, record_len - CHECK_SUM_LEN);
   memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
   // memcpy to pmem and flush
+
   pmem_memcpy_persist(this->aep_base_ + (uint64_t)bi * BLOCK_LEN, record_buffer,
                       record_len);
   delete[] record_buffer;
@@ -165,17 +170,17 @@ void HashMap::Summary() {
           "Set %d(%d) timestamp:%ld Find times:%d rss:%ld cur block: %u\n", wt,
           000, time(nullptr), find_times, usage.ru_maxrss,
           this->kvStore->getValueIndex());*/
-  fflush(NvmEngine::LOG);
+  fflush(nvm_engine::LOG);
 }
 
-Status NvmEngine::CreateOrOpen(const std::string& _name, DB** _dbptr,
+Status nvm_engine::CreateOrOpen(const std::string& _name, DB** _dbptr,
                                FILE* _log_file) {
-  auto* db = new NvmEngine(_name, _log_file);
+  auto* db = new nvm_engine(_name, _log_file);
   *_dbptr = db;
   return Ok;
 }
 
-NvmEngine::NvmEngine(const std::string& _name, FILE* _log_file) {
+nvm_engine::nvm_engine(const std::string& _name, FILE* _log_file) {
   LOG = _log_file;
   char* base;
   int isPmem;
@@ -187,12 +192,12 @@ NvmEngine::NvmEngine(const std::string& _name, FILE* _log_file) {
   hash_map_ = new HashMap(base);
 }
 
-NvmEngine::~NvmEngine() { delete this->hash_map_; }
+nvm_engine::~nvm_engine() { delete this->hash_map_; }
 
-Status NvmEngine::Get(const Slice& key, std::string* value) {
+Status nvm_engine::Get(const Slice& key, std::string* value) {
   return hash_map_->Get(key, value);
 }
 
-Status NvmEngine::Set(const Slice& key, const Slice& value) {
+Status nvm_engine::Set(const Slice& key, const Slice& value) {
   return hash_map_->Set(key, value);
 }

@@ -8,42 +8,15 @@
 #include <string>
 #include <vector>
 #include "../include/db.hpp"
+#include "memory_cotroller.h"
+#include "define.h"
 
 using std::atomic;
 using std::string;
 using std::vector;
 
-typedef uint32_t HASH_VALUE;
-typedef uint16_t VALUE_LEN_TYPE;
-typedef uint32_t KEY_INDEX_TYPE;
-typedef uint32_t BLOCK_INDEX_TYPE;
-typedef uint16_t VERSION_TYPE;
-
-// size of record
-static const uint8_t KEY_LEN = 16;
-static const uint8_t VAL_SIZE_LEN = 2;
-static const uint8_t CHECK_SUM_LEN = 4;
-static const uint8_t VERSION_LEN = 2;
-static const uint8_t RECORD_FIX_LEN = 24;
-static const uint16_t VALUE_MAX_LEN = 1024;
-
-// offset of record
-static const uint8_t VAL_SIZE_OFFSET = 0;
-static const uint8_t KEY_OFFSET = VAL_SIZE_LEN;
-static const uint8_t VERSION_OFFSET = KEY_OFFSET + KEY_LEN;
-static const uint8_t VALUE_OFFSET = VERSION_OFFSET + VERSION_LEN;
-
-// aep setting
-static const uint8_t BLOCK_LEN = 64;
-static const uint64_t FILE_SIZE = 68719476736UL;
-// static const uint64_t FILE_SIZE = 10000000UL;
-
-// hash setting
-static const uint32_t KV_NUM_MAX = 16 * 24 * 1024 * 1024 * 0.60;
-static const uint32_t HASH_MAP_SIZE = 100000000;
-
-// log
-thread_local int wt = 0;
+class AepMemoryController;
+thread_local AepMemoryController thread_local_aep_controller;
 
 HASH_VALUE DJBHash(const char* _str, size_t _size = 16) {
   unsigned int hash = 5381;
@@ -70,23 +43,7 @@ class Entry {
   std::atomic<KEY_INDEX_TYPE> head_;
 };
 
-class AepMemoryController {
- public:
-  explicit AepMemoryController(uint64_t _max_size) {
-    max_block_index_ = ceil((double)_max_size / BLOCK_LEN) + 1;
-  }
 
-  void Push(int _size, BLOCK_INDEX_TYPE _index){};
-
-  bool Pop(int _size, BLOCK_INDEX_TYPE* _index) {
-    *_index = current_block_index_.fetch_add(_size);
-    return *_index < max_block_index_;
-  }
-
- private:
-  BLOCK_INDEX_TYPE max_block_index_;
-  std::atomic<KEY_INDEX_TYPE> current_block_index_ = {0};
-};
 
 class KVStore {
  public:
@@ -96,7 +53,6 @@ class KVStore {
     this->block_index_ = new BLOCK_INDEX_TYPE[KV_NUM_MAX];
     this->val_lens_ = new VALUE_LEN_TYPE[KV_NUM_MAX];
     this->versions_ = new VERSION_TYPE[KV_NUM_MAX]{0};
-    this->aep_memory_controller_ = new AepMemoryController(FILE_SIZE);
     // TODO: ADD FREE LSIT
   };
   ~KVStore() {
@@ -105,7 +61,6 @@ class KVStore {
     delete this->key_buffer_;
     delete this->block_index_;
     delete this->versions_;
-    delete this->aep_memory_controller_;
   }
 
   // Read key and value according to the index of key
@@ -125,7 +80,7 @@ class KVStore {
   void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
     // TODO: ADD freelist
     int size = (RECORD_FIX_LEN + _dataLen + BLOCK_LEN - 1) / BLOCK_LEN;
-    this->aep_memory_controller_->Push(size, _index);
+    thread_local_aep_controller.Delete(size, &_index);
   }
 
   KEY_INDEX_TYPE Find(const Slice& _key, KEY_INDEX_TYPE _index) {
@@ -172,12 +127,11 @@ class KVStore {
   VERSION_TYPE* versions_;
   char* key_buffer_ = nullptr;
   char* aep_base_ = nullptr;
-  AepMemoryController* aep_memory_controller_ = nullptr;
 };
 
 typedef uint32_t (*hash_func)(const char*, size_t size);
 
-class NvmEngine;
+class nvm_engine;
 class HashMap {
  public:
   explicit HashMap(char* _base, hash_func _hash = DJBHash);
@@ -202,7 +156,7 @@ class HashMap {
   hash_func hash_;
 };
 
-class NvmEngine : DB {
+class nvm_engine : DB {
  public:
   static FILE* LOG;
 
@@ -210,9 +164,9 @@ class NvmEngine : DB {
   static Status CreateOrOpen(const std::string& _name, DB** _dbptr,
                              FILE* _log_file = nullptr);
 
-  NvmEngine(const std::string& _name, FILE* _log_file);
+  nvm_engine(const std::string& _name, FILE* _log_file);
 
-  ~NvmEngine() override;
+  ~nvm_engine() override;
 
   Status Get(const Slice& _key, std::string* _value) override;
 
