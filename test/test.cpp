@@ -158,10 +158,10 @@ void test4() {
   Slice slice_v2(val2, 4);
   DB *db = nullptr;
   DB::CreateOrOpen("./tmp", &db, log_file);
-  /*db->Set(slice_key, slice_v1);
-  db->Set(slice_key, slice_v2);*/
+  db->Set(slice_key, slice_v1);
+  db->Set(slice_key, slice_v2);
   std::string b;
   db->Get(slice_key, &b);
   std::cout << b << std::endl;
 }
-int main() { test4(); }
+int main() { test2(); }

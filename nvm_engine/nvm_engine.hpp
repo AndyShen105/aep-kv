@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 #include "../include/db.hpp"
-#include "memory_cotroller.h"
 #include "define.h"
+#include "memory_cotroller.h"
 
 using std::atomic;
 using std::string;
@@ -42,8 +42,6 @@ class Entry {
  public:
   std::atomic<KEY_INDEX_TYPE> head_;
 };
-
-
 
 class KVStore {
  public:
@@ -80,7 +78,7 @@ class KVStore {
   void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
     // TODO: ADD freelist
     int size = (RECORD_FIX_LEN + _dataLen + BLOCK_LEN - 1) / BLOCK_LEN;
-    thread_local_aep_controller.Delete(size, &_index);
+    thread_local_aep_controller.Delete(size, _index);
   }
 
   KEY_INDEX_TYPE Find(const Slice& _key, KEY_INDEX_TYPE _index) {

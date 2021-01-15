@@ -42,8 +42,8 @@ class DB {
    *  You should Write your log to the log_file.
    *  Stdout, stderr would be redirect to /dev/null.
    */
-  static Status CreateOrOpen(const std::string& name, DB** dbptr,
-                             FILE* log_file = nullptr);
+  static Status CreateOrOpen(const std::string& _name, DB** _db,
+                             FILE* _log_file = nullptr);
 
   /*
    *  Get the value of key.

@@ -9,8 +9,8 @@ typedef hash_func pFunction;
 GlobalMemory* AepMemoryController::global_memory_ =
     new GlobalMemory(FILE_SIZE);
 
-Status DB::CreateOrOpen(const std::string& name, DB** dbptr, FILE* log_file) {
-  return nvm_engine::CreateOrOpen(name, dbptr, log_file);
+Status DB::CreateOrOpen(const std::string& _name, DB** _db, FILE* _log_file) {
+  return nvm_engine::CreateOrOpen(_name, _db, _log_file);
 }
 
 DB::~DB() = default;

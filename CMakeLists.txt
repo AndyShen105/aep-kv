@@ -7,10 +7,7 @@ include_directories(include)
 include_directories(nvm_engine)
 LINK_DIRECTORIES(/usr/local/lib)
 add_executable(tair_contest
-        include/db.hpp
         nvm_engine/nvm_engine.cpp
-        nvm_engine/nvm_engine.hpp
-        nvm_engine/concurrentqueue.h
         test/test.cpp)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
