@@ -6,8 +6,7 @@
 FILE* NvmEngine::LOG;
 typedef hash_func pFunction;
 
-GlobalMemory* AepMemoryController::global_memory_ =
-    new GlobalMemory(FILE_SIZE);
+
 
 Status DB::CreateOrOpen(const std::string& _name, Config* _config, DB** _db,
                         FILE* _log_file) {
@@ -30,7 +29,7 @@ BLOCK_INDEX_TYPE KVStore::GetBlockIndex(const Slice& _value) {
 }
 
 void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
-  BLOCK_INDEX_TYPE bi = 0;  // GetBlockIndex(_value);
+  BLOCK_INDEX_TYPE bi = GetBlockIndex(_value);
   size_t record_len = RECORD_FIX_LEN + _value.size();
   char record_buffer[record_len];
   VALUE_LEN_TYPE len = _value.size();
@@ -76,6 +75,7 @@ void KVStore::Update(const Slice& _key, const Slice& _value,
   pmem_memcpy_persist(
       this->aep_base_ + (uint64_t)new_block_index * CONFIG.block_size_,
       record_buffer, record_len);
+
   block_index_[_index] = new_block_index;
   versions_[_index] = version;
   val_lens_[_index] = _value.size();
@@ -207,8 +207,8 @@ Status NvmEngine::Get(const Slice& key, std::string* value) {
 }
 
 Status NvmEngine::Set(const Slice& key, const Slice& value) {
-  /*if (write_count_++ % 5000 == 0) {
-    std::cout << "write requests:" << write_count_ << std::endl;
+ /* if(write_count_++%500 ==0) {
+    std::cout << write_count_<<std::endl;
   }*/
   return hash_map_->Set(key, value);
 }

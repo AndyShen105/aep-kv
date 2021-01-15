@@ -33,7 +33,6 @@ int NUM_THREADS = 1;
 int PER_SET = 50331648;
 int PER_GET = 2013265920;
 Config config;
-std::string TAGERT_FILE;
 
 std::mutex mt2;
 std::unordered_map<std::string, std::string> real_result;
@@ -68,10 +67,10 @@ void* set_pure(void* id) {
 
     Slice data_key((char*)start, 16);
     Slice data_value((char*)(start + 4), 80);
-    // if (((cnt & 0x7777) ^ 0x7777) == 0) {
-    //   memcpy(key_pool + POOL_TOP, start, 16);
-    //   POOL_TOP += 2;
-    // }
+     /*if (((cnt & 0x7777) ^ 0x7777) == 0) {
+       memcpy(key_pool + POOL_TOP, start, 16);
+       POOL_TOP += 2;
+     }*/
     db->Set(data_key, data_value);
   }
   return 0;
@@ -238,7 +237,7 @@ int main(int argc, char* argv[]) {
 
   FILE* log_file = fopen("performance.log", "w");
 
-  DB::CreateOrOpen("DB", &config, &db, log_file);
+  DB::CreateOrOpen("/mnt/pmem1/DB", &config, &db, log_file);
 
   setenv("MALLOC_TRACE", "output", 1);
   mtrace();

@@ -63,27 +63,56 @@ class SimpleFreeList : public FreeList {
 class GlobalMemory {
  public:
   explicit GlobalMemory(size_t _file_size) {
-    max_segment_index_ = _file_size / CONFIG.block_per_segment_;
+    max_segment_index_ =
+        _file_size / (CONFIG.block_per_segment_ * CONFIG.block_size_);
     global_free_list_ = new SimpleFreeList();
   }
+  ~GlobalMemory() { delete global_free_list_; }
   bool Allocate(BLOCK_INDEX_TYPE* _block_index) {
     SEGMENT_INDEX_TYPE segment_index = this->segment_index_.fetch_add(1);
     if (segment_index >= max_segment_index_) {
+      if (!free_segments.empty()) {
+        *_block_index = free_segments.top() * CONFIG.block_per_segment_;
+        free_segments.pop();
+        return true;
+      }
       return false;
     }
     *_block_index = segment_index * CONFIG.block_per_segment_;
-    std::cout << "Thread id:" << std::this_thread::get_id()
+    /*std::cout << "Thread id:" << std::this_thread::get_id()
               << " allocate an segment, block index:" << *_block_index
-              << std::endl;
+              << std::endl;*/
     return true;
   }
 
+  bool New(BLOCK_INDEX_TYPE* _block_index, size_t _buffer_size) {
+    size_t num_segments =
+        (_buffer_size + CONFIG.block_per_segment_ * CONFIG.block_size_ - 1) /
+        (CONFIG.block_per_segment_ * CONFIG.block_size_);
+    SEGMENT_INDEX_TYPE segment_index = segment_index_.fetch_add(num_segments);
+    if (segment_index >= max_segment_index_) {
+      std::cout << "OOM: Failed to new a big array." << std::endl;
+      return false;
+    }
+    *_block_index = segment_index * CONFIG.block_per_segment_;
+    return true;
+  }
+
+  void Delete(BLOCK_INDEX_TYPE block_index_, size_t _buffer_size) {
+    size_t num_segments =
+        (_buffer_size + CONFIG.block_per_segment_ * CONFIG.block_size_ - 1) /
+        (CONFIG.block_per_segment_ * CONFIG.block_size_);
+    for (unsigned int i = 0; i < num_segments; i++) {
+      free_segments.push(block_index_ + i * CONFIG.block_per_segment_);
+    }
+  }
   FreeList* free_list() const { return global_free_list_; }
 
  private:
   SEGMENT_INDEX_TYPE max_segment_index_;
   std::atomic<SEGMENT_INDEX_TYPE> segment_index_{0};
   FreeList* global_free_list_;
+  std::stack<BLOCK_INDEX_TYPE> free_segments;
 };
 
 class AepMemoryController {
@@ -103,17 +132,18 @@ class AepMemoryController {
 
   bool New(int _size, BLOCK_INDEX_TYPE* _index) {
     if (current_block_index_ + _size > max_block_index_) {
+      if (free_list_->Pop(_index, _size)) {
+        return true;
+      }
       // recycle rest block.
       size_t size = max_block_index_ - current_block_index_;
       free_list_->Push(current_block_index_, size);
-
       if (global_memory_->Allocate(&current_block_index_)) {
-        max_block_index_ += current_block_index_ + CONFIG.block_per_segment_;
+        max_block_index_ = current_block_index_ + CONFIG.block_per_segment_;
         *_index = current_block_index_++;
         return true;
       } else {
         auto free_list = global_memory_->free_list();
-        std::cout<<"aaaa";
         return free_list->ThreadSafePop(_index, _size);
       }
     } else {

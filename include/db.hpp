@@ -7,7 +7,7 @@ enum Status : unsigned char { Ok, NotFound, IOError, OutOfMemory };
 
 typedef struct Config {
   size_t block_size_ = 64;
-  uint64_t block_per_segment_ = 65535;
+  uint64_t block_per_segment_ = 65536;
 } Config;
 
 class Slice {

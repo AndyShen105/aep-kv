@@ -15,8 +15,10 @@ using std::atomic;
 using std::string;
 using std::vector;
 
-class AepMemoryController;
-thread_local AepMemoryController* thread_local_aep_controller = new AepMemoryController;
+GlobalMemory* AepMemoryController::global_memory_ = new GlobalMemory(FILE_SIZE);
+thread_local AepMemoryController* thread_local_aep_controller =
+    new AepMemoryController;
+
 thread_local size_t write_count_{0};
 
 HASH_VALUE DJBHash(const char* _str, size_t _size = 16) {
@@ -46,8 +48,23 @@ class Entry {
 
 class KVStore {
  public:
-  explicit KVStore(char* _memBase) : aep_base_(_memBase) {
-    this->key_buffer_ = new char[KV_NUM_MAX * KEY_LEN];
+  explicit KVStore(char* _memBase, bool is_allocate_aep = false)
+      : aep_base_(_memBase) {
+    is_allocate_aep_ = is_allocate_aep;
+    if (is_allocate_aep_) {
+      BLOCK_INDEX_TYPE block_index;
+      if (AepMemoryController::global_memory_->New(&block_index,
+                                                   KV_NUM_MAX * KEY_LEN)) {
+        this->key_buffer_ =
+            _memBase + (uint64_t)block_index * CONFIG.block_size_;
+      } else {
+        std::cout << "reallocate memory from memory." << std::endl;
+        this->key_buffer_ = new char[KV_NUM_MAX * KEY_LEN];
+      }
+    } else {
+      this->key_buffer_ = new char[KV_NUM_MAX * KEY_LEN];
+    }
+
     this->next_ = new KEY_INDEX_TYPE[KV_NUM_MAX];
     this->block_index_ = new BLOCK_INDEX_TYPE[KV_NUM_MAX];
     this->val_lens_ = new VALUE_LEN_TYPE[KV_NUM_MAX];
@@ -57,17 +74,25 @@ class KVStore {
   ~KVStore() {
     // delete this->freeList;
     delete this->next_;
-    delete this->key_buffer_;
     delete this->block_index_;
     delete this->versions_;
+    if (is_allocate_aep_) {
+      BLOCK_INDEX_TYPE block_index =
+          (this->key_buffer_ - this->aep_base_) / CONFIG.block_size_;
+      AepMemoryController::global_memory_->Delete(block_index,
+                                                  KV_NUM_MAX * KEY_LEN);
+    } else {
+      delete this->key_buffer_;
+    }
   }
 
   // Read key and value according to the index of key
   void Read(KEY_INDEX_TYPE _index, string* _value) {
     BLOCK_INDEX_TYPE block_index = block_index_[_index];
-    _value->assign(
-        this->aep_base_ + (uint64_t)block_index * CONFIG.block_size_ + VALUE_OFFSET,
-        val_lens_[_index]);
+    _value->assign(this->aep_base_ +
+                       (uint64_t)block_index * CONFIG.block_size_ +
+                       VALUE_OFFSET,
+                   val_lens_[_index]);
   }
 
   // Write kv pair to pmem
@@ -78,7 +103,8 @@ class KVStore {
   // Recycle value according to its head index
   void Recycle(VALUE_LEN_TYPE _dataLen, BLOCK_INDEX_TYPE _index) {
     // TODO: ADD freelist
-    int size = (RECORD_FIX_LEN + _dataLen + CONFIG.block_size_ - 1) / CONFIG.block_size_;
+    int size = (RECORD_FIX_LEN + _dataLen + CONFIG.block_size_ - 1) /
+               CONFIG.block_size_;
     thread_local_aep_controller->Delete(size, _index);
   }
 
@@ -119,6 +145,7 @@ class KVStore {
   }
 
  private:
+  bool is_allocate_aep_;
   std::atomic<KEY_INDEX_TYPE> current_key_index_ = {0};
   KEY_INDEX_TYPE* next_ = nullptr;
   BLOCK_INDEX_TYPE* block_index_ = nullptr;
@@ -160,8 +187,8 @@ class NvmEngine : DB {
   static FILE* LOG;
 
  public:
-  static Status CreateOrOpen(const std::string& _name, Config* _config, DB** _dbptr,
-                             FILE* _log_file = nullptr);
+  static Status CreateOrOpen(const std::string& _name, Config* _config,
+                             DB** _dbptr, FILE* _log_file = nullptr);
 
   NvmEngine(const std::string& _name, FILE* _log_file);
 
