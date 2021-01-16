@@ -1,13 +1,18 @@
-## AEP 性能测试（本地版）
+## AEP 性能测试
 
 运行命令：
 
 ```
-./judge.sh <lib-path> <scale of Set> <scale of Get>
+-./judge 
+
+-s :set size per Thread.
+-g :get size per Thread.
+-t :num threads.
+-x :block size.
+-y :block per segment.
 ```
+示例：
 
-
-## 准备工作
-
-1. 预先编译好KV引擎的链接库
-2. judge 仅用于小数据测试，因此key_pool的大小较小，需要手动修改。
+```shell script
+./judge -s 10000000 -g 100000 -t 4
+```

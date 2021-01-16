@@ -140,14 +140,16 @@ class AepMemoryController {
       free_list_->Push(current_block_index_, size);
       if (global_memory_->Allocate(&current_block_index_)) {
         max_block_index_ = current_block_index_ + CONFIG.block_per_segment_;
-        *_index = current_block_index_++;
+        *_index = current_block_index_;
+        current_block_index_ += _size;
         return true;
       } else {
         auto free_list = global_memory_->free_list();
         return free_list->ThreadSafePop(_index, _size);
       }
     } else {
-      *_index = current_block_index_++;
+      *_index = current_block_index_;
+      current_block_index_ += _size;
       return true;
     }
   };

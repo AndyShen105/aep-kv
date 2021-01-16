@@ -2,6 +2,40 @@
 # <center>基于可持久化内存-AEP的KV存储引擎</center>
 > 一份简单的AEP上手指南
 
+# Demo
+
+测试机器：172.26.0.113 root/123456 
+
+测试环境： centOS 7.6/8*128G AEP/4通道
+
+## 步骤 
+- 切换到测试程序目录
+```shell script
+cd /home/andyshen/aep-kv/judge
+```
+- 通过judge程序对KV存储进行一些测试
+
+```shell script
+**
+-s :set size per Thread.
+-g :get size per Thread.
+-t :num threads.
+**
+
+./judge -s 10000 -g 10000 -t 5
+```
+上面的命令就是5个线程并发，每个线程在纯写阶段写入10000条数据；在纯读阶段，每个线程执行10000次Get请求。单线程请求数量不超过1000万。
+
+示例：
+
+```shell script
+./judge -s 10000 -g 10000 -t -5
+Init config block size:64 block per segments:65536
+17.49
+3.77
+```
+其中17.49为纯写入耗时，3.77为纯读的时间
+
 # 我们做的是个啥？
 
 可持久化内存-PMem在 2018 年的时候还仅限于学术界的探讨，而如今已经来到了工业界。Intel 在 2019 年 4 月份发布了第一款 全英特尔® 傲腾™ 数据中心级持久内存-Intel Optane DC Persistent Memory 重新定义了传统的架构在内存密集型工作模式，具有突破性的性能水平，同时具有持久化能力。而近几年的学术界中，关于持久化内存的应用已经成为一个研究热点。PMEM目前的一种常用配置是将DRAM运行为CPU的缓存，使用单位容量价格较低的PMEM作为主存，这种方式可以使现有应用程序无痛迁移到PMEM上，且不会相比DRAM有太大的性能差异。但是想要充分利用PMEM的性能，最佳方案仍然是设计专业的应用程序。因而，**本项目拟基于可持久化内存实现一个高效的可持久化的KV存储引擎，以探索可持久化内存在工业领域的实践落地**。
@@ -207,7 +241,9 @@ bool Delete(int _size, BLOCK_INDEX_TYPE _index)
 - 官方的编程指南《Programming Persistent Memory》
 
 # 效果如何？
+测试机器：172.26.0.113 root/123456 
 
+测试环境： centOS 7.6/8*128G AEP/4通道
 ## 线程
 1.吞吐量/QPS
 2.纯写、读写、纯读
@@ -215,6 +251,5 @@ bool Delete(int _size, BLOCK_INDEX_TYPE _index)
 1.纯写
 ## 辅存
 
-# Quickly Start
 
 
