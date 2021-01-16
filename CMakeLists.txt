@@ -8,7 +8,7 @@ include_directories(nvm_engine)
 LINK_DIRECTORIES(/usr/local/lib)
 add_executable(tair_contest
         nvm_engine/nvm_engine.cpp
-        test/test.cpp nvm_engine/LinkedFreeList.h)
+        test/test.cpp)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pg")

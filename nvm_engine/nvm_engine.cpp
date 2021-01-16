@@ -42,7 +42,7 @@ void KVStore::Write(const Slice& _key, const Slice& _value, Entry* _entry) {
   memcpy(record_buffer + record_len - CHECK_SUM_LEN, &check_sum, CHECK_SUM_LEN);
   // memcpy to pmem and flush
 
-  pmem_memcpy_nodrain(this->aep_base_ + (uint64_t)bi * CONFIG.block_size_,
+  pmem_memcpy_persist(this->aep_base_ + (uint64_t)bi * CONFIG.block_size_,
                       record_buffer, record_len);
 
   // Update key buffer in memory

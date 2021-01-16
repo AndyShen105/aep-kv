@@ -26,7 +26,7 @@ static const uint8_t VALUE_OFFSET = VERSION_OFFSET + VERSION_LEN;
 // aep setting
 static Config CONFIG;
 //static const uint64_t FILE_SIZE = 68719476736UL;
-static const uint64_t FILE_SIZE = 10737418240UL;
+static const uint64_t FILE_SIZE = 53687091200UL;
 
 // hash setting
 static const uint32_t KV_NUM_MAX = 16 * 24 * 1024 * 1024 * 0.60;

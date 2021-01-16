@@ -48,7 +48,7 @@ class Entry {
 
 class KVStore {
  public:
-  explicit KVStore(char* _memBase, bool is_allocate_aep = false)
+  explicit KVStore(char* _memBase, bool is_allocate_aep = true)
       : aep_base_(_memBase) {
     is_allocate_aep_ = is_allocate_aep;
     if (is_allocate_aep_) {

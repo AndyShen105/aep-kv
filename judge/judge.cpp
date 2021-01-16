@@ -23,7 +23,7 @@ typedef unsigned long long ull;
 const int NUM_TEST_CORRECTNESS = 10000;
 const ull BASE = 199997;
 struct timeval TIME_START, TIME_END;
-const int MAX_POOL_SIZE = 1e7;
+const int MAX_POOL_SIZE = 100000;
 int POOL_TOP = 0;
 ull key_pool[MAX_POOL_SIZE];
 
@@ -67,10 +67,10 @@ void* set_pure(void* id) {
 
     Slice data_key((char*)start, 16);
     Slice data_value((char*)(start + 4), 80);
-    /*if (((cnt & 0x7777) ^ 0x7777) == 0) {
+    if (((cnt & 0x7777) ^ 0x7777) == 0) {
       memcpy(key_pool + POOL_TOP, start, 16);
       POOL_TOP += 2;
-    }*/
+    }
     db->Set(data_key, data_value);
   }
   return 0;
@@ -88,7 +88,7 @@ void* set_pure_correctness(void* id) {
     Slice data_key((char*)start, 16);
     Slice data_value((char*)(start + 4), 80);
 
-    if (((cnt & 0x7777) ^ 0x7777) == 0) {
+    if (((cnt & 0x7777) ^ 0x7777) == 0 ) {
       memcpy(key_pool + POOL_TOP, start, 16);
       POOL_TOP += 2;
     }
@@ -116,7 +116,9 @@ void* get_pure(void* id) {
   while (cnt--) {
     int id = ((int)n(mt) | 1) ^ 1;
     id %= POOL_TOP - 2;
-    if (id - u > edge || u - id > edge) {
+    Slice data_key((char*)(key_pool + id), 16);
+    db->Get(data_key, &value);
+    /*if (id - u > edge || u - id > edge) {
       unsigned int* start = rnd.nextUnsignedInt();
       Slice data_key((char*)(key_pool + id), 16);
       Slice data_value((char*)start, 80);
@@ -124,7 +126,7 @@ void* get_pure(void* id) {
     } else {
       Slice data_key((char*)(key_pool + id), 16);
       db->Get(data_key, &value);
-    }
+    }*/
   }
   return 0;
 }
@@ -228,7 +230,8 @@ void test_correctness(pthread_t* tids) {
     expected_val.clear();
     delete key_str;
   }
-  std::cout << "sum: " << NUM_TEST_CORRECTNESS * NUM_THREADS << "right: " << sum
+  std::cout << "sum sample: " << NUM_TEST_CORRECTNESS * NUM_THREADS << std::endl
+            << "right: " << sum << std::endl
             << "wrong: " << NUM_TEST_CORRECTNESS * NUM_THREADS - sum
             << std::endl;
 }
@@ -240,27 +243,30 @@ int main(int argc, char* argv[]) {
 
   FILE* log_file = fopen("performance.log", "w");
 
-  DB::CreateOrOpen("DB", &config, &db, log_file);
+  DB::CreateOrOpen("/mnt/pmem1/DB", &config, &db, log_file);
 
   setenv("MALLOC_TRACE", "output", 1);
   mtrace();
+  std::cout << "---------------Performance Test-------------" << std::endl;
   pthread_t tids[NUM_THREADS];
 
   gettimeofday(&TIME_START, NULL);
-  //test_set_pure(tids);
+
+  test_set_pure(tids);
   gettimeofday(&TIME_END, NULL);
 
   ull sec_set = 1000000 * (TIME_END.tv_sec - TIME_START.tv_sec) +
                 (TIME_END.tv_usec - TIME_START.tv_usec);
-  std::cout << "start read test" << std::endl;
-  //test_set_get(tids);
+
+  test_set_get(tids);
   gettimeofday(&TIME_END, NULL);
   ull sec_total = 1000000 * (TIME_END.tv_sec - TIME_START.tv_sec) +
                   (TIME_END.tv_usec - TIME_START.tv_usec);
   ull sec_set_get = sec_total - sec_set;
 
-  printf("%.2lf\n%.2lf\n", sec_set / 1000.0, sec_set_get / 1000.0);
-
+  printf("pure write time:%.2lf ms\n pure read time:%.2lf ms\n", sec_set / 1000.0,
+         sec_set_get / 1000.0);
+  std::cout << "---------------Correctness Test  -------------" << std::endl;
   test_correctness(tids);
 
   return 0;
