@@ -15,7 +15,7 @@ using std::atomic;
 using std::string;
 using std::vector;
 
-GlobalMemory* AepMemoryController::global_memory_ = new GlobalMemory(FILE_SIZE);
+GlobalMemoryController* AepMemoryController::global_memory_ = new GlobalMemoryController(FILE_SIZE);
 thread_local AepMemoryController* thread_local_aep_controller =
     new AepMemoryController;
 

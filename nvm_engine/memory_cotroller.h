@@ -60,14 +60,14 @@ class SimpleFreeList : public FreeList {
   unordered_map<uint8_t, stack<BLOCK_INDEX_TYPE>> map_;
 };
 
-class GlobalMemory {
+class GlobalMemoryController {
  public:
-  explicit GlobalMemory(size_t _file_size) {
+  explicit GlobalMemoryController(size_t _file_size) {
     max_segment_index_ =
         _file_size / (CONFIG.block_per_segment_ * CONFIG.block_size_);
     global_free_list_ = new SimpleFreeList();
   }
-  ~GlobalMemory() { delete global_free_list_; }
+  ~GlobalMemoryController() { delete global_free_list_; }
   bool Allocate(BLOCK_INDEX_TYPE* _block_index) {
     SEGMENT_INDEX_TYPE segment_index = this->segment_index_.fetch_add(1);
     if (segment_index >= max_segment_index_) {
@@ -117,7 +117,7 @@ class GlobalMemory {
 
 class AepMemoryController {
  public:
-  static GlobalMemory* global_memory_;
+  static GlobalMemoryController* global_memory_;
 
  public:
   explicit AepMemoryController() {

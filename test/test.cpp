@@ -131,18 +131,18 @@ void test3() {
     v.data() = random_str(v.size());
 
     db->Set(k, v);
-    /* if (0 == strcmp(k.data(), target)) {
+     /*if (0 == strcmp(k.data(), target)) {
        Slice slice(target);
        std::string a;
 
        db->Get(slice, &a);
        printf("Set size %d\n", v.size());
        printf("Get size %d\n", a.size());
-     }
+     }*/
      compare.push_back(k);
-     compare.push_back(v);*/
+     compare.push_back(v);
   }
-  /*Slice slice(target);
+  Slice slice(target);
   std::string a;
   db->Get(slice, &a);
   int count = 0;
@@ -159,7 +159,7 @@ void test3() {
   }
 
   std::cout << "sum: " << compare.size() / 2 << "right: " << count
-            << "wrong: " << compare.size() / 2 - count << std::endl;*/
+            << "wrong: " << compare.size() / 2 - count << std::endl;
 }
 
 void test4() {
@@ -177,4 +177,4 @@ void test4() {
   db->Get(slice_key, &b);
   std::cout << b << std::endl;
 }
-int main() { test_set(); }
+int main() { test3(); }
