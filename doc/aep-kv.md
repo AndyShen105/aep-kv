@@ -206,10 +206,16 @@ bool Delete(int _size, BLOCK_INDEX_TYPE _index)
 # 效果如何？
 
 ## 线程
-1.吞吐量/QPS
-2.纯写、读写、纯读
+为了验证AEP的并发读写能力,我们分别在1,2,4,8,16五种不同数量的线程组下进行了纯写,纯读和读写混合的测试,并记录QPS信息. 其中纯读和纯写测试中,单线程访问AEP的次数均为10000000次,最终的测试结果如图所示:
+![write_QPS](/Users/liyanan/CLionProjects/code/aep-kv/doc/write_QPS.png)
+![read_QPS](/Users/liyanan/CLionProjects/code/aep-kv/doc/read_QPS.png)
+从图中可以看出,随着并发线程数的增加,AEP写入的QPS在前期基本与并发线程数呈同倍数增加,而在到达16个线程后,增速开始变缓,说明在当前的kv大小及AEP容量下,16的并发线程数下的读写QPS已接近性能极限.
+
+
 ## BlockSize 
-1.纯写
+为了确认block_size在申请AEP内存空间时对整体性能的影响,我们进行了基于不同block_size的单线程5000000次纯写测试,测试结果如图所示:
+![blocksize_perf](/Users/liyanan/CLionProjects/code/aep-kv/doc/blocksize_perf.png)
+从图中可以看出,随着block_size的增大,写入AEP的耗时在增加,说明过大的block_size并不能提高写入效率,反而会因为分配了过大的内存,导致gc时间增加,降低写入效率.
 ## 辅存
 
 # Quickly Start
