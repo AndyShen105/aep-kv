@@ -121,8 +121,11 @@ typedf struct KeyInfo {
 线程级内存管理器-**AepMemoryController**向**GlobalMemoryController**申请aep内存的基本单位。后面会介绍这两者。
 
 ### Block
-GC逻辑中管理的最小单位，为一个固定的size的空间，比如64byte，即对于一条Record的申请aep内存的请求，**AepMemoryController**会根据大小分配出n个block大小的空间。
+GC逻辑中管理的最小单位，为一个固定的size的空间，即对于一条Record的申请aep内存的请求，**AepMemoryController**会根据大小分配出n个block大小的空间。在官方的文档中，我们可以了解到如下两点：
 
+- cache line size between memory controller and the Optane DIMM is 64 bytes, 
+- the actual physical access granuality is 256 bytes. 
+因此，我们默认每个block的size为64byte，这样保证数据都是按照64对齐。
 
 
 为了提高并发效率，对于AEP的GC策略，如图五所示，我们采用的是threal local + global的方式。这里存在两个管理器：**AepMemoryController**和**GlobalMemoryController**。其中GlobalMemoryController主要是负责管理整个File的内存，而AepMemoryController则是被线程所有，负责线程级别的内存管理。
