@@ -138,9 +138,12 @@ class KVStore {
   void UpdateKeyInfo(KEY_INDEX_TYPE _index, BLOCK_INDEX_TYPE _block_index,
                      VALUE_LEN_TYPE _value_len, VERSION_TYPE _version) {
     if (_version > versions_[_index]) {
+
+      AepMemoryController::global_memory_->Delete(block_index_[_index], );
       block_index_[_index] = _block_index;
       val_lens_[_index] = _value_len;
       versions_[_index] = _version;
+      AepMemoryController::global_memory_->Delete()
     }
   }
 

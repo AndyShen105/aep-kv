@@ -24,10 +24,15 @@ cd ../judge
 示例：
 
 ```shell script
-./judge -s 10000 -g 10000 -t -5
+./judge -s 10000000 -g 10000000 -t 16
 Init config block size:64 block per segments:65536
-17.49
-3.77
+---------------Performance Test-------------
+pure write time:31558.22 ms
+ pure read time:4527.57 ms
+---------------Correctness Test  -------------
+sum sample: 160000
+right: 160000
+wrong: 0
 ```
 其中17.49为纯写入耗时，3.77为纯读的时间
 
